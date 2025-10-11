@@ -12,6 +12,7 @@ set(glm_DIR "C:/Users/root/CppExtensions/glm/build" CACHE PATH "Path to glmConfi
 include_directories(
     "src"
     "src/include"
+    "shaders"
     ${GLFW_INCLUDE_DIR}
 )
 
