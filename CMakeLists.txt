@@ -9,6 +9,9 @@ set(GLFW_LIBRARY "C:/Users/root/CppExtensions/glfw-3.4.bin.WIN64/lib-mingw-w64/g
 set(GLFW_INCLUDE_DIR "C:/Users/root/CppExtensions/glfw-3.4.bin.WIN64/include" CACHE PATH "Path to GLFW include directory")
 set(glm_DIR "C:/Users/root/CppExtensions/glm/build" CACHE PATH "Path to glmConfig.cmake directory")
 
+set(CMAKE_BUILD_TYPE Debug)
+# set(CMAKE_BUILD_TYPE Release)
+
 include_directories(
     "src"
     "src/include"
