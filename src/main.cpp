@@ -7,12 +7,6 @@
 
 #include <renderer.h>
 
-#ifndef NDEBUG
-    const bool enableValidationLayers = true;
-#else
-    const bool enableValidationLayers = false;
-#endif
-
 const uint32_t WIDTH=1920;
 const uint32_t HEIGHT=1080;
 
@@ -36,6 +30,7 @@ private:
 
         window = glfwCreateWindow(WIDTH,HEIGHT,"Renderer Window", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
+        renderer.window = window;
         
     }
 
@@ -51,9 +46,9 @@ private:
     }
 
     void cleanup(){
+        renderer.cleanupVulkan();
         glfwDestroyWindow(window);
         glfwTerminate();
-        renderer.cleanupVulkan();
     }
 };
 
@@ -61,7 +56,7 @@ private:
 
 int main() {
     Application app;
-    
+
     app.run();
 
     return 0;
