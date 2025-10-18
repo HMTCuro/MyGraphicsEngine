@@ -32,6 +32,12 @@ struct QueueFamilyIndices{
     }
 };
 
+struct SwapChainSupportDetails{
+    VkSurfaceCapabilitiesKHR capabilities;
+    std::vector<VkSurfaceFormatKHR> formats;
+    std::vector<VkPresentModeKHR> presentModes;
+};
+
 struct Vertex {
     glm::vec3 pos;
     glm::vec3 color;
@@ -60,15 +66,46 @@ private:
     VkSurfaceKHR surface;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device;
+    VkQueue graphicsQueue;
+    VkQueue presentQueue;
+    VkSwapchainKHR swapChain;
+    std::vector<VkImage> swapChainImages;
+    VkFormat swapChainImageFormat;
+    VkExtent2D swapChainExtent;
+    std::vector<VkImageView> swapChainImageViews;
+    std::vector<VkFramebuffer> swapChainFramebuffers;
+    VkRenderPass renderPass;
 
     // Core functions
     void createInstance(); // Necessary: Create Vulkan instance
-    void setupDebugMessenger(); 
+    void setupDebugMessenger(); // Optional: Setup debug messenger for validation layers
     void pickPhysicalDevice(); // Necessary: Select physical device (GPU)
-    void createLogicalDevice();
-    void createVertexBuffer();
-    void destroyVertexBuffer();
-
+    void createLogicalDevice(); // Necessary: Create logical device from physical device
+    void createSwapChain(); // Necessary: Create swap chain for rendering
+    void createImageViews(); // Necessary: Create image views for swap chain images
+    void createRenderPass(); // Necessary: Create render pass for framebuffers
+    //     createDescriptorSetLayout();
+    //     createGraphicsPipeline();
+    //     createCommandPool();
+    //     createColorResources();
+    //     createDepthResources();
+    //     createFramebuffers();
+    //     createTextureImage();
+    //     createTextureImageView();
+    //     createTextureSampler();
+    //     loadModel();
+    //     createVertexBuffer();
+    //     createIndexBuffer();
+    //     createUniformBuffers();
+    //     // MyLight
+    //     // createLightUniformBuffers();
+    //     createDescriptorPool();
+    //     createDescriptorSets();
+    //     createCommandBuffers();
+    //     createSyncObjects();
+    void createVertexBuffer(); // Example: Create vertex buffer
+    void destroyVertexBuffer(); // Example: Destroy vertex buffer
+    void cleanupSwapChain(); // Necessary: Cleanup swap chain resources
     // Supplementary functions
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
@@ -79,4 +116,8 @@ private:
     }
 
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+    SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
+    VkImageView createImageView(VkImage image, VkFormat format,VkImageAspectFlags aspectFlags, uint32_t miplevels=1); // Editable: Create a single image view
+    VkFormat findDepthFormat();
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 };
