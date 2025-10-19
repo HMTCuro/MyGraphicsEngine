@@ -19,8 +19,8 @@ void BaseRenderer::initVulkan() {
     createLogicalDevice();
     createSwapChain();
     createImageViews();
-    //     createRenderPass();
-    //     createDescriptorSetLayout();
+    createRenderPass();
+    createDescriptorSetLayout();
     //     createGraphicsPipeline();
     //     createCommandPool();
     //     createColorResources();
@@ -51,7 +51,8 @@ void BaseRenderer::cleanupVulkan() {
     // Cleanup Vulkan resources
     std::cout << "Vulkan Cleaned Up" << std::endl;
 
-    
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+    vkDestroyRenderPass(device, renderPass, nullptr);
     cleanupSwapChain();
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
@@ -342,8 +343,33 @@ void BaseRenderer::createRenderPass(){
     if(result != VK_SUCCESS){
         throw std::runtime_error("failed to create render pass!");
     }
-    
+
 }
+
+void BaseRenderer::createDescriptorSetLayout(){
+    VkDescriptorSetLayoutBinding uboLayoutBinding{};
+    uboLayoutBinding.binding = 0;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.pImmutableSamplers = nullptr;
+    // uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; // Accessible in vertex shader
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS; // Accessible in all graphics shaders
+
+    std::array<VkDescriptorSetLayoutBinding,1> bindings = {uboLayoutBinding};
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+    layoutInfo.pBindings = bindings.data();
+
+    VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
+    if(result != VK_SUCCESS){
+        throw std::runtime_error("failed to create descriptor set layout!");
+    }
+
+
+
+}
+
 
 void BaseRenderer::cleanupSwapChain(){
     for(auto view: swapChainImageViews){

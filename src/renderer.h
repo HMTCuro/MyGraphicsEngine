@@ -75,6 +75,7 @@ private:
     std::vector<VkImageView> swapChainImageViews;
     std::vector<VkFramebuffer> swapChainFramebuffers;
     VkRenderPass renderPass;
+    VkDescriptorSetLayout descriptorSetLayout;
 
     // Core functions
     void createInstance(); // Necessary: Create Vulkan instance
@@ -84,7 +85,7 @@ private:
     void createSwapChain(); // Necessary: Create swap chain for rendering
     void createImageViews(); // Necessary: Create image views for swap chain images
     void createRenderPass(); // Necessary: Create render pass for framebuffers
-    //     createDescriptorSetLayout();
+    void createDescriptorSetLayout();
     //     createGraphicsPipeline();
     //     createCommandPool();
     //     createColorResources();
