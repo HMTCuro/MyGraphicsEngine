@@ -31,7 +31,7 @@ private:
         window = glfwCreateWindow(WIDTH,HEIGHT,"Renderer Window", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
         renderer.window = window;
-        
+        renderer.setFramebufferResizeCallback();
     }
 
     void initVulkan(){
@@ -42,7 +42,9 @@ private:
         while(glfwWindowShouldClose(window) == 0){
             glfwPollEvents();
             renderer.drawFrame();
+            // break;
         }
+        renderer.waitIdle(); 
     }
 
     void cleanup(){

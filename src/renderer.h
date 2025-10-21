@@ -14,6 +14,7 @@
 #include <set>
 #include <cstring>
 #include <fstream>
+#include <chrono>
 
 #ifndef NDEBUG
     const bool enableValidationLayers = true;
@@ -80,6 +81,14 @@ struct Vertex {
 
 struct MinimumUBO{
     float time;
+
+    void update(){
+        static auto startTime = std::chrono::high_resolution_clock::now();
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+        time = deltaTime;
+    }
 };
 
 class BaseRenderer {
@@ -92,6 +101,8 @@ public:
     void drawFrame();
     void cleanupVulkan();
 
+    void waitIdle();
+    void setFramebufferResizeCallback();
 private:
     // Example variables
     std::vector<Vertex> vertices={
@@ -102,8 +113,6 @@ private:
     std::vector<uint32_t> indices={
         0,1,2
     };
-    VkBuffer vkBuffer; // Example usage of VkBuffer from vulkan_core.h
-
     // Core variables
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
@@ -126,7 +135,9 @@ private:
     std::vector<VkCommandBuffer> commandBuffers;
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
-
+    std::vector<VkSemaphore> imageAvailableSemaphores;
+    std::vector<VkSemaphore> renderFinishedSemaphores;
+    std::vector<VkFence> inFlightFences;
 
     VkImage colorImage;
     VkDeviceMemory colorImageMemory;
@@ -143,6 +154,9 @@ private:
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
+    size_t uboSize = 0;
+    uint32_t currentFrame = 0;
+    bool framebufferResized = false;
 
     // Core functions
     void createInstance(); // Necessary: Create Vulkan instance
@@ -150,6 +164,7 @@ private:
     void pickPhysicalDevice(); // Necessary: Select physical device (GPU)
     void createLogicalDevice(); // Necessary: Create logical device from physical device
     void createSwapChain(); // Necessary: Create swap chain for rendering
+    void recreateSwapChain(); // Necessary: Recreate swap chain on window resize
     void createImageViews(); // Necessary: Create image views for swap chain images
     void createRenderPass(); // Necessary: Create render pass for framebuffers
     void createDescriptorSetLayout(); // Necessary: Create descriptor set layout
@@ -166,10 +181,13 @@ private:
     void createIndexBuffer(); // Necessary: Create index buffer
     template<typename T>
     void createUniformBuffers();
+    template<typename T>
+    void updateUniformBuffer(uint32_t currentImage);
     void createDescriptorPool();
     void createDescriptorSets();
-    void createCommandBuffers();
-    void createSyncObjects();
+    void createCommandBuffers(); // Necessary: Create command buffers
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+    void createSyncObjects(); // Necessary: Create synchronization objects
     void cleanupSwapChain(); // Necessary: Cleanup swap chain resources
     // Supplementary functions
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
@@ -180,6 +198,10 @@ private:
         return VK_FALSE;
     }
 
+    static void framebufferResizedCallback(GLFWwindow* window, int width, int height) {
+        auto renderer = reinterpret_cast<BaseRenderer*>(glfwGetWindowUserPointer(window));
+        renderer->framebufferResized = true;
+    }
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
     SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
     VkImageView createImageView(VkImage image, VkFormat format,VkImageAspectFlags aspectFlags, uint32_t miplevels=1); // Editable: Create a single image view
@@ -198,6 +220,7 @@ private:
 template<typename T>
 void BaseRenderer::createUniformBuffers() {
     VkDeviceSize bufferSize = sizeof(T);
+    uboSize = bufferSize;
     uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
@@ -207,4 +230,12 @@ void BaseRenderer::createUniformBuffers() {
 
         vkMapMemory(device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
     }
+}
+
+template<typename T>
+void BaseRenderer::updateUniformBuffer(uint32_t currentImage) {
+    T ubo{};
+    ubo.update();
+
+    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 }
