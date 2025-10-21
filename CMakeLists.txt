@@ -9,6 +9,7 @@ set(GLFW_LIBRARY "C:/Users/root/CppExtensions/glfw-3.4.bin.WIN64/lib-mingw-w64/g
 set(GLFW_INCLUDE_DIR "C:/Users/root/CppExtensions/glfw-3.4.bin.WIN64/include" CACHE PATH "Path to GLFW include directory")
 set(glm_DIR "C:/Users/root/CppExtensions/glm/build" CACHE PATH "Path to glmConfig.cmake directory")
 
+
 set(CMAKE_BUILD_TYPE Debug)
 # set(CMAKE_BUILD_TYPE Release)
 
@@ -29,10 +30,12 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 find_package(Vulkan REQUIRED)
 find_package(glm REQUIRED)
 
-
 target_link_libraries(BasicVkRenderer
     Vulkan::Vulkan
     ${GLFW_LIBRARY}
     glm::glm
 )
+
+# Compile glsl shaders to SPIR-V at build time
+
 
