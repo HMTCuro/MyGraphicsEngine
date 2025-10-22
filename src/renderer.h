@@ -138,6 +138,9 @@ private:
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
+    VkPipeline computePipeline;
+    VkPipelineLayout computePipelineLayout;
+    VkDescriptorSetLayout computeDescriptorSetLayout;
 
     VkImage colorImage;
     VkDeviceMemory colorImageMemory;
@@ -157,6 +160,7 @@ private:
     size_t uboSize = 0;
     uint32_t currentFrame = 0;
     bool framebufferResized = false;
+    bool usingComputePipeline = false;
 
     // Core functions
     void createInstance(); // Necessary: Create Vulkan instance
@@ -189,6 +193,8 @@ private:
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void createSyncObjects(); // Necessary: Create synchronization objects
     void cleanupSwapChain(); // Necessary: Cleanup swap chain resources
+
+    void createComputePipeline(); // Editable: Create compute pipeline
     // Supplementary functions
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {

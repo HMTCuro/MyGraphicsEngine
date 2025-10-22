@@ -857,6 +857,42 @@ void BaseRenderer::cleanupSwapChain(){
     vkDestroySwapchainKHR(device, swapChain, nullptr);
 }
 
+void BaseRenderer::createComputePipeline(){
+    VkResult result;
+
+    std::vector<char> computeShaderCode = readSpvFile("../shader_spv/comp.spv");
+    VkShaderModule computeShaderModule= createShaderModule(computeShaderCode);
+
+    VkPipelineShaderStageCreateInfo computeShaderStageInfo{};
+    computeShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    computeShaderStageInfo.module = computeShaderModule;
+    computeShaderStageInfo.pName = "main";
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &computeDescriptorSetLayout;
+
+    result =vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &computePipelineLayout);
+    if(result != VK_SUCCESS){
+        throw std::runtime_error("failed to create compute pipeline layout!");
+    }
+
+    VkComputePipelineCreateInfo computePipelineInfo{};
+    computePipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    computePipelineInfo.stage = computeShaderStageInfo;
+    computePipelineInfo.layout = computePipelineLayout;
+
+    result = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineInfo, nullptr, &computePipeline);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("failed to create compute pipeline!");
+    }
+
+}
+
+
+
 QueueFamilyIndices BaseRenderer::findQueueFamilies(VkPhysicalDevice device){
     QueueFamilyIndices indices;
     uint32_t queueFamilyCount=0;
@@ -865,7 +901,7 @@ QueueFamilyIndices BaseRenderer::findQueueFamilies(VkPhysicalDevice device){
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
     int i = 0;
     for(const auto& queueFamily:queueFamilies){
-        if(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+        if((queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)&& (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT)){
             indices.graphicsFamily = i;
         }
         VkBool32 presentSupport = false;

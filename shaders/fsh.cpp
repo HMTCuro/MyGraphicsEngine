@@ -1,8 +1,10 @@
 const char* fragmentShaderSource = R"(
-#version 430 core
+#version 450
 
 layout (location=0) in vec3 fragColor;
-
+layout (binding=0) uniform UniformBufferObject {
+    float time;
+}ubo;
 layout (location=0) out vec4 color;
 
 void main(){
