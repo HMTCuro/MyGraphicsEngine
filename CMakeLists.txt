@@ -23,6 +23,7 @@ include_directories(
 add_executable(BasicVkRenderer
     src/main.cpp
     src/Renderer.cpp
+    src/RayTracingRenderer.cpp
 )
 
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
@@ -37,5 +38,15 @@ target_link_libraries(BasicVkRenderer
 )
 
 # Compile glsl shaders to SPIR-V at build time
+add_custom_target(Shaders ALL
+    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shader_spv/shader.vert -o ${PROJECT_SOURCE_DIR}/shader_spv/vert.spv
+    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shader_spv/shader.frag -o ${PROJECT_SOURCE_DIR}/shader_spv/frag.spv
+    BYPRODUCTS
+        ${PROJECT_SOURCE_DIR}/shader_spv/vert.spv
+        ${PROJECT_SOURCE_DIR}/shader_spv/frag.spv
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/shader_spv
+    COMMENT "Compiling GLSL shaders to SPIR-V"
+)
 
+add_dependencies(BasicVkRenderer Shaders)
 

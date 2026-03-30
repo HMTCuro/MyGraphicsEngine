@@ -1,71 +1,37 @@
 #pragma once
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
 
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE 
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
+#include "renderer.h"
 
-// #include <glslang/Public/ShaderLang.h>
-
-#include <string>
-#include <vector>
-#include <iostream>
-#include <set>
-#include <cstring>
-#include <fstream>
-#include <chrono>
-
-#include "basicObjects.h"
-
-#ifndef NDEBUG
-    const bool enableValidationLayers = true;
-#else
-    const bool enableValidationLayers = false;
-#endif
-
-const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
-
-const std::vector<const char*> validationLayers={
-    "VK_LAYER_KHRONOS_validation"
+const std::vector<const char*> rayTracingDeviceExtensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+    VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+    VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+    VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+    VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+    VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+    VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME
 };
 
-const std::vector<const char*> deviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+// Holds data for a scratch buffer used as a temporary storage during acceleration structure builds
+struct ScratchBuffer
+{
+	uint64_t       deviceAddress;
+	VkBuffer       handle;
+	VkDeviceMemory memory;
 };
 
-struct QueueFamilyIndices{
-    int32_t graphicsFamily= -1;
-    int32_t presentFamily= -1;
-
-    bool isComplete(){
-        return graphicsFamily != -1 && presentFamily != -1;
-    }
+// Wraps all data required for an acceleration structure
+struct AccelerationStructure
+{
+	VkAccelerationStructureKHR          handle;
+	uint64_t                            deviceAddress;
+	VkBuffer                            buffer;
+    VkDeviceMemory                      memory;
 };
 
-struct SwapChainSupportDetails{
-    VkSurfaceCapabilitiesKHR capabilities;
-    std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> presentModes;
-};
-
-
-struct MinimumUBO{
-    float time;
-
-    void update(){
-        static auto startTime = std::chrono::high_resolution_clock::now();
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-        time = deltaTime;
-    }
-};
-
-class BaseRenderer {
+class BaseRayTracingRenderer{
 public:
-    std::string description = "Base Vulkan Renderer";
-
     GLFWwindow* window; // Pointer to the GLFW window
 
     void initVulkan();
@@ -74,8 +40,10 @@ public:
 
     void waitIdle();
     void setFramebufferResizeCallback();
+
 private:
     // Example variables
+    std::vector<BaseObjects> objects;
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
     // Core variables
@@ -119,6 +87,13 @@ private:
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
 
+    std::vector<Vertex> verticesTLAS;
+    std::vector<uint32_t> indicesTLAS;
+    VkBuffer vertexBufferTLAS;
+    VkDeviceMemory vertexBufferTLASMemory;
+    VkBuffer indexBufferTLAS;
+    VkDeviceMemory indexBufferTLASMemory;
+
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
@@ -126,6 +101,22 @@ private:
     uint32_t currentFrame = 0;
     bool framebufferResized = false;
     bool usingComputePipeline = false;
+
+    // ray tracing specific variables
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures{};
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures{};
+    VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
+
+    VkPipeline rayTracingPipeline;
+    VkPipelineLayout rayTracingPipelineLayout;
+    
+    AccelerationStructure blas;
+    AccelerationStructure tlas;
+
+
+    VkBuffer rayTracingShaderBindingTableBuffer;
+    VkDeviceMemory rayTracingShaderBindingTableBufferMemory;
+    
 
     // Core functions
     void createInstance(); // Necessary: Create Vulkan instance
@@ -137,7 +128,13 @@ private:
     void createImageViews(); // Necessary: Create image views for swap chain images
     void createRenderPass(); // Necessary: Create render pass for framebuffers
     void createDescriptorSetLayout(); // Necessary: Create descriptor set layout
+
+
     void createGraphicsPipeline(); // Necessary: Create graphics pipeline
+    void createAccelerationStructures(); // Necessary: Create acceleration structures for ray tracing
+    void createBLAS();
+    void createTLAS();
+
     void createCommandPool(); // Necessary: Create command pool for command buffers
     void createColorResources(); // Necessary: Create color resources (image, image view, and sampler)
     void createDepthResources(); // Necessary: Create depth resources (image, image view, and sampler)
@@ -170,7 +167,7 @@ private:
     }
 
     static void framebufferResizedCallback(GLFWwindow* window, int width, int height) {
-        auto renderer = reinterpret_cast<BaseRenderer*>(glfwGetWindowUserPointer(window));
+        auto renderer = reinterpret_cast<BaseRayTracingRenderer*>(glfwGetWindowUserPointer(window));
         renderer->framebufferResized = true;
     }
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
@@ -187,31 +184,7 @@ private:
     VkCommandBuffer beginSingleTimeCommands();
     void endSingleTimeCommands(VkCommandBuffer commandBuffer);
     void loadVertexAndIndex();
-};
-
-extern template void BaseRenderer::createUniformBuffers<MinimumUBO>();
-extern template void BaseRenderer::updateUniformBuffer<MinimumUBO>(uint32_t currentImage);
-
-template<typename T>
-struct UBOConfig{
-    T ubo;
-    VkDevice device;
-    VkBuffer uniformBuffer;
-    VkDeviceMemory uniformBufferMemory;
-};
-template struct UBOConfig<MinimumUBO>;
-
-template<typename T>
-class UboManager {
-public:
-    UboManager(UBOConfig<T> config) {
-        this->config = config;
-    }
-
-    void createUniformBuffer();
-    void updateUniformBuffer(uint32_t currentImage);
-private:
-    UBOConfig<T> config;
+    void loadObjects();
+    VkDeviceAddress getBufferDeviceAddress(VkBuffer buffer);
 
 };
-extern template class UboManager<MinimumUBO>;
