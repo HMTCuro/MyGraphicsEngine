@@ -1,6 +1,7 @@
 #pragma once
 
 #include "renderer.h"
+#include "whiteModelPipeline.h"
 #include <memory>
 
 const std::vector<const char*> rayTracingDeviceExtensions = {
@@ -47,6 +48,9 @@ public:
     void endSingleTimeCommands(VkCommandBuffer commandBuffer);
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     void waitIdle();
+
+    void createIndexBuffer(BaseObject* object);
+    void createVertexBuffer(BaseObject* object);
 private:
     VkDevice device;
     VkPhysicalDevice physicalDevice;
@@ -86,8 +90,7 @@ private:
     std::vector<VkFramebuffer> swapChainFramebuffers;
     VkRenderPass renderPass;
     VkDescriptorSetLayout descriptorSetLayout;
-    VkPipelineLayout pipelineLayout;
-    VkPipeline graphicsPipeline; // Basic rasterization pipeline
+
     VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
     VkDescriptorPool descriptorPool;
@@ -146,6 +149,8 @@ private:
     VkDeviceMemory rayTracingShaderBindingTableBufferMemory;
 
     BufferManager bufferManager;
+
+    WhiteModelPipeline1 whiteModelPipeline;
     
 
     // Core functions
@@ -157,19 +162,17 @@ private:
     void recreateSwapChain(); // Necessary: Recreate swap chain on window resize
     void createImageViews(); // Necessary: Create image views for swap chain images
     void createRenderPass(); // Necessary: Create render pass for framebuffers
-    void createDescriptorSetLayout(); // Necessary: Create descriptor set layout
 
     void initBufferManager(){
         bufferManager.setProperties(device, physicalDevice, commandPool, graphicsQueue);
     }
+    void createGraphicsPipeline(); // Pipeline: Create graphics pipeline
 
+    //RT
     void createRayTracingDescriptorSetLayout();
     void createRayTracingPipeline();
-    
     void createRayTracingDescriptorSets();
     void createRayTracingDescriptorPool();
-
-    void createGraphicsPipeline(); // Necessary: Create graphics pipeline
     void createAccelerationStructures(); // Necessary: Create acceleration structures for ray tracing
     void createBLAS();
     void createTLAS();
@@ -181,22 +184,25 @@ private:
         VkBuildAccelerationStructureFlagsKHR flags
     );
 
-    void createCommandPool(); // Necessary: Create command pool for command buffers
-    void createColorResources(); // Necessary: Create color resources (image, image view, and sampler)
-    void createDepthResources(); // Necessary: Create depth resources (image, image view, and sampler)
-    void createFramebuffers(); // Necessary: Create framebuffers for the swap chain
+    void createCommandPool(); // Renderer: Create command pool for command buffers
+    void createColorResources(); // Renderer: Create color resources (image, image view, and sampler)
+    void createDepthResources(); // Renderer: Create depth resources (image, image view, and sampler)
+    void createFramebuffers(); // Renderer: Create framebuffers for the swap chain
     //     createTextureImage();
     //     createTextureImageView();
     //     createTextureSampler();
     //     loadModel();
-    void createVertexBuffer(); // Necessary: Create vertex buffer
-    void createIndexBuffer(); // Necessary: Create index buffer
+    void createVertexBuffer(); // Buffer: Create vertex buffer
+    void createIndexBuffer(); // Buffer: Create index buffer
     template<typename T>
     void createUniformBuffers();
     template<typename T>
     void updateUniformBuffer(uint32_t currentImage);
-    void createDescriptorPool();
-    void createDescriptorSets();
+
+    void createDescriptorSetLayout(); // Descriptor: Create descriptor set layout
+    void createDescriptorPool(); // Descriptor: Create descriptor pool
+    void createDescriptorSets(); // Descriptor: Create descriptor sets
+    
     void createCommandBuffers(); // Necessary: Create command buffers
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void createSyncObjects(); // Necessary: Create synchronization objects
