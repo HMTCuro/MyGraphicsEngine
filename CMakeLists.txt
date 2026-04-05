@@ -39,11 +39,17 @@ target_link_libraries(BasicVkRenderer
 
 # Compile glsl shaders to SPIR-V at build time
 add_custom_target(Shaders ALL
-    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shader_spv/shader.vert -o ${PROJECT_SOURCE_DIR}/shader_spv/vert.spv
-    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shader_spv/shader.frag -o ${PROJECT_SOURCE_DIR}/shader_spv/frag.spv
+    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/shader.vert -o ${PROJECT_SOURCE_DIR}/shader_spv/vert.spv
+    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/shader.frag -o ${PROJECT_SOURCE_DIR}/shader_spv/frag.spv
+    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/miss.rmiss -o ${PROJECT_SOURCE_DIR}/shader_spv/miss.spv -I ${PROJECT_SOURCE_DIR}/shaders --target-spv=spv1.4
+    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/closeHit.rchit -o ${PROJECT_SOURCE_DIR}/shader_spv/closeHit.spv -I ${PROJECT_SOURCE_DIR}/shaders --target-spv=spv1.4
+    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/raygen.rgen -o ${PROJECT_SOURCE_DIR}/shader_spv/raygen.spv -I ${PROJECT_SOURCE_DIR}/shaders --target-spv=spv1.4
     BYPRODUCTS
         ${PROJECT_SOURCE_DIR}/shader_spv/vert.spv
         ${PROJECT_SOURCE_DIR}/shader_spv/frag.spv
+        ${PROJECT_SOURCE_DIR}/shader_spv/miss.spv
+        ${PROJECT_SOURCE_DIR}/shader_spv/closeHit.spv
+        ${PROJECT_SOURCE_DIR}/shader_spv/raygen.spv
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/shader_spv
     COMMENT "Compiling GLSL shaders to SPIR-V"
 )

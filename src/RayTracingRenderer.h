@@ -1,6 +1,7 @@
 #pragma once
 
 #include "renderer.h"
+#include <memory>
 
 const std::vector<const char*> rayTracingDeviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -30,6 +31,29 @@ struct AccelerationStructure
     VkDeviceMemory                      memory;
 };
 
+class BufferManager{
+public:
+    void setProperties(VkDevice device, VkPhysicalDevice physicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue){
+        this->device = device;
+        this->physicalDevice = physicalDevice;
+        this->commandPool = commandPool;
+        this->graphicsQueue = graphicsQueue;
+    }
+    void createBuffer(
+        VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, 
+        VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+    VkCommandBuffer beginSingleTimeCommands();
+    void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+    void waitIdle();
+private:
+    VkDevice device;
+    VkPhysicalDevice physicalDevice;
+    VkCommandPool commandPool;
+    VkQueue graphicsQueue;
+};
+
 class BaseRayTracingRenderer{
 public:
     GLFWwindow* window; // Pointer to the GLFW window
@@ -43,7 +67,7 @@ public:
 
 private:
     // Example variables
-    std::vector<BaseObjects> objects;
+    std::vector<std::unique_ptr<BaseObject>> objects;
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
     // Core variables
@@ -109,6 +133,10 @@ private:
 
     VkPipeline rayTracingPipeline;
     VkPipelineLayout rayTracingPipelineLayout;
+    VkDescriptorSetLayout rayTracingDescriptorSetLayout;
+    VkDescriptorPool rayTracingDescriptorPool;
+    std::vector<VkDescriptorSet> rayTracingDescriptorSets;
+    std::vector<VkDescriptorSetLayout> rayTracingDescriptorSetLayouts;
     
     AccelerationStructure blas;
     AccelerationStructure tlas;
@@ -116,6 +144,8 @@ private:
 
     VkBuffer rayTracingShaderBindingTableBuffer;
     VkDeviceMemory rayTracingShaderBindingTableBufferMemory;
+
+    BufferManager bufferManager;
     
 
     // Core functions
@@ -129,11 +159,27 @@ private:
     void createRenderPass(); // Necessary: Create render pass for framebuffers
     void createDescriptorSetLayout(); // Necessary: Create descriptor set layout
 
+    void initBufferManager(){
+        bufferManager.setProperties(device, physicalDevice, commandPool, graphicsQueue);
+    }
+
+    void createRayTracingDescriptorSetLayout();
+    void createRayTracingPipeline();
+    
+    void createRayTracingDescriptorSets();
+    void createRayTracingDescriptorPool();
 
     void createGraphicsPipeline(); // Necessary: Create graphics pipeline
     void createAccelerationStructures(); // Necessary: Create acceleration structures for ray tracing
     void createBLAS();
     void createTLAS();
+    void createAccelerationStructure(
+        VkAccelerationStructureTypeKHR asType,
+        AccelerationStructure& accelerationStructure,
+        VkAccelerationStructureGeometryKHR& asGeometry,
+        VkAccelerationStructureBuildRangeInfoKHR& asBuildRangeInfo,
+        VkBuildAccelerationStructureFlagsKHR flags
+    );
 
     void createCommandPool(); // Necessary: Create command pool for command buffers
     void createColorResources(); // Necessary: Create color resources (image, image view, and sampler)
@@ -179,12 +225,31 @@ private:
     VkShaderModule createShaderModule(const std::vector<char>& code);
     void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
-    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
-    VkCommandBuffer beginSingleTimeCommands();
-    void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+
     void loadVertexAndIndex();
     void loadObjects();
     VkDeviceAddress getBufferDeviceAddress(VkBuffer buffer);
 
 };
+
+// class BaseDescriptorSet {
+// public:
+//     BaseDescriptorSet(VkDevice device, VkDescriptorSetLayout layout){
+//         this->device = device;
+//         this->descriptorSetLayout = layout;
+//     }
+//     ~BaseDescriptorSet();
+
+//     // 禁止拷贝，支持移动
+//     BaseDescriptorSet(const BaseDescriptorSet&) = delete;
+//     BaseDescriptorSet& operator=(const BaseDescriptorSet&) = delete;
+//     BaseDescriptorSet(BaseDescriptorSet&& other) noexcept;
+
+//     virtual void createDescriptorSetLayout();
+//     virtual std::vector<VkWriteDescriptorSet> createDescriptorWrites();
+//     VkDescriptorSetLayout getHandle() const { return descriptorSetLayout; }
+// protected:
+//     VkDevice device;
+//     VkDescriptorSetLayout descriptorSetLayout;
+// };
+
