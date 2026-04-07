@@ -9,11 +9,12 @@ layout (binding=0) uniform UniformBufferObject {
 layout (location=0) out vec4 color;
 
 void main(){
-    vec3 pointLightPos = vec3(0.0, 0.0, 2.0);
+    vec3 pointLightPos = vec3(0.0, 3.0, 0.0);
     vec3 lightDir = normalize(pointLightPos - fragWorldPos);
-    float intensity = max(dot(fragNorm, lightDir), 0.0);
+    float intensity = max(pow(dot(fragNorm, lightDir), 3.0), 0.0);
     vec3 diffuse = fragColor * intensity;
 
 
     color = vec4(diffuse, 1.0);
+    // color = vec4(fragNorm * 0.5 + 0.5, 1.0);
 }

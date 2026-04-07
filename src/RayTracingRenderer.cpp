@@ -17,18 +17,16 @@ void BaseRayTracingRenderer::initVulkan() {
     createSwapChain();
     createImageViews();
     createRenderPass();
-    createDescriptorSetLayout();
-    createGraphicsPipeline();
+    createDescriptorSetLayout(); // For all descriptor sets
+    createGraphicsPipeline(); // For all graphics pipelines
     createCommandPool();
     initBufferManager();
-
     createColorResources();
     createDepthResources();
     createFramebuffers();
     //     createTextureImage();
     //     createTextureImageView();
     //     createTextureSampler();
-    //     loadModel();
     loadObjects();
     createVertexBuffer();
     createIndexBuffer();
@@ -131,6 +129,13 @@ void BaseRayTracingRenderer::cleanupVulkan() {
         vkFreeMemory(device, object->indexBufferMemory, nullptr);
     }
 
+    for(auto& mesh: meshes){
+        vkDestroyBuffer(device, mesh->vertexBuffer, nullptr);
+        vkFreeMemory(device, mesh->vertexBufferMemory, nullptr);
+        vkDestroyBuffer(device, mesh->indexBuffer, nullptr);
+        vkFreeMemory(device, mesh->indexBufferMemory, nullptr);
+    }
+
     vkDestroyBuffer(device, vertexBuffer, nullptr);
     vkFreeMemory(device, vertexBufferMemory, nullptr);
     vkDestroyBuffer(device, indexBuffer, nullptr);
@@ -156,9 +161,10 @@ void BaseRayTracingRenderer::cleanupVulkan() {
 
     vkDestroyCommandPool(device, commandPool, nullptr);
     whiteModelPipeline.destroyPipeline();
+    whiteModelDescriptorSetLayoutBundle.destroyDescriptorSetLayout();
     // vkDestroyPipeline(device, graphicsPipeline, nullptr);
     // vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+    // vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
     vkDestroyPipeline(device, rayTracingPipeline, nullptr);
     vkDestroyPipelineLayout(device, rayTracingPipelineLayout, nullptr);
@@ -175,6 +181,9 @@ void BaseRayTracingRenderer::cleanupVulkan() {
         }
     }
     vkDestroyInstance(instance, nullptr);
+    for (auto& mesh : meshes) {
+        delete mesh;
+    }
 }
 
 void BaseRayTracingRenderer::setFramebufferResizeCallback(){
@@ -560,24 +569,8 @@ void BaseRayTracingRenderer::createRenderPass(){
 }
 
 void BaseRayTracingRenderer::createDescriptorSetLayout(){
-    VkDescriptorSetLayoutBinding uboLayoutBinding{};
-    uboLayoutBinding.binding = 0;
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.pImmutableSamplers = nullptr;
-    // uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; // Accessible in vertex shader
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS; // Accessible in all graphics shaders
-
-    std::array<VkDescriptorSetLayoutBinding,1> bindings = {uboLayoutBinding};
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-    layoutInfo.pBindings = bindings.data();
-
-    VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-    if(result != VK_SUCCESS){
-        throw std::runtime_error("failed to create descriptor set layout!");
-    }
+   whiteModelDescriptorSetLayoutBundle.setProperties(device);
+   whiteModelDescriptorSetLayoutBundle.createDescriptorSetLayout();
 }
 
 void BaseRayTracingRenderer::createRayTracingDescriptorSetLayout(){
@@ -904,7 +897,7 @@ void BaseRayTracingRenderer::createRayTracingPipeline(){
     shaderGroups.push_back(group);
 
     std::array<VkDescriptorSetLayout,2> descriptorSetLayouts = {
-        descriptorSetLayout,rayTracingDescriptorSetLayout};
+        rayTracingDescriptorSetLayout,rayTracingDescriptorSetLayout};
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -937,7 +930,7 @@ void BaseRayTracingRenderer::createRayTracingPipeline(){
 
 void BaseRayTracingRenderer::createGraphicsPipeline(){
     std::cout << "--------Creating Graphics Pipeline---------" << std::endl;
-    whiteModelPipeline.setProperties(device, renderPass, descriptorSetLayout);
+    whiteModelPipeline.setProperties(device, renderPass, whiteModelDescriptorSetLayoutBundle.getHandle());
     whiteModelPipeline.createPipeline();
 }
 
@@ -1085,7 +1078,14 @@ void BaseRayTracingRenderer::createRayTracingDescriptorPool(){
 
 void BaseRayTracingRenderer::createDescriptorSets(){
     VkResult result;
-    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+    // std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+    std::vector<VkDescriptorSetLayout> layouts;
+    layouts.reserve(MAX_FRAMES_IN_FLIGHT*whiteModelDescriptorSetLayoutBundle.getCount());
+    for(uint32_t i=0;i<MAX_FRAMES_IN_FLIGHT;i++){
+        const auto& handle = whiteModelDescriptorSetLayoutBundle.getHandle();
+        layouts.insert(layouts.end(), handle.begin(), handle.end());
+    }
+
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = descriptorPool;
@@ -1227,14 +1227,26 @@ void BaseRayTracingRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, 
         scissor.extent = swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        for(auto&object: objects){
-            VkBuffer vertexBuffers[] = {object->vertexBuffer};
+        // for(auto&object: objects){
+        //     VkBuffer vertexBuffers[] = {object->vertexBuffer};
+        //     VkDeviceSize offsets[] = {0};
+        //     vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        //     vkCmdBindIndexBuffer(commandBuffer, object->indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        //     glm::mat4 modelMat = glm::mat4(15.0f);
+        //     vkCmdPushConstants(commandBuffer, whiteModelPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &modelMat);
+        //     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, whiteModelPipeline.getLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+        //     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(object->indices.size()), 1, 0, 0, 0);
+        // }
+
+        for(auto&meshInstance: meshInstances){
+            VkBuffer vertexBuffers[] = {meshInstance.mesh->vertexBuffer};
             VkDeviceSize offsets[] = {0};
             vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-            vkCmdBindIndexBuffer(commandBuffer, object->indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
+            vkCmdBindIndexBuffer(commandBuffer, meshInstance.mesh->indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+            glm::mat4 modelMat = meshInstance.getModelMatrix();
+            vkCmdPushConstants(commandBuffer, whiteModelPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &modelMat);
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, whiteModelPipeline.getLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
-            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(object->indices.size()), 1, 0, 0, 0);
+            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(meshInstance.mesh->indices.size()), 1, 0, 0, 0);
         }
 
         // VkBuffer vertexBuffers[] = {vertexBuffer};
@@ -1325,8 +1337,6 @@ void BaseRayTracingRenderer::createComputePipeline(){
     }
 
 }
-
-
 
 QueueFamilyIndices BaseRayTracingRenderer::findQueueFamilies(VkPhysicalDevice device){
     QueueFamilyIndices indices;
@@ -1496,7 +1506,6 @@ uint32_t BaseRayTracingRenderer::findMemoryType(uint32_t typeFilter, VkMemoryPro
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-
 void BaseRayTracingRenderer::loadVertexAndIndex(){
     // Load your vertex and index data here
     // For example, you can hardcode some data or load from a model file
@@ -1574,7 +1583,7 @@ void BaseRayTracingRenderer::loadObjects(){
     objects.push_back(std::make_unique<Room>());
     objects.push_back(std::make_unique<Cube>());
         objects.back()->position = glm::vec3(0.0f, 0.0f, -0.2f);
-        objects.back()->rotation = glm::vec3(glm::radians(45.0f),0.0f, 0.0f);
+        objects.back()->rotation = glm::vec3(glm::radians(45.0f),glm::radians(45.0f), 0.0f);
         objects.back()->scale = glm::vec3(0.1f, 0.1f, 0.1f);
 
     for (auto& object : objects) {
@@ -1582,6 +1591,28 @@ void BaseRayTracingRenderer::loadObjects(){
         bufferManager.createVertexBuffer(object.get());
         bufferManager.createIndexBuffer(object.get());
     }
+
+    for (auto& mesh: meshes)
+    {
+        bufferManager.createMeshVertexBuffer(mesh);
+        bufferManager.createMeshIndexBuffer(mesh);
+    }
+    
+
+    meshInstances.push_back(
+        MeshInstance{
+            .mesh = meshes[ROOM],
+            .scale = glm::vec3(4.0f, 4.0f, 4.0f)
+        }
+    );
+    meshInstances.push_back(
+        MeshInstance{
+            .mesh = meshes[CUBE],
+            .position = glm::vec3(0.0f, 3.2f, 3.2f),
+            .rotation = glm::vec3(glm::radians(45.0f),glm::radians(45.0f), 0.0f),
+            .scale = glm::vec3(0.5f, 0.5f, 0.5f),
+        }
+    );
 }
 
 VkDeviceAddress BaseRayTracingRenderer::getBufferDeviceAddress(VkBuffer buffer){ 
@@ -1620,139 +1651,3 @@ void BaseRayTracingRenderer::updateUniformBuffer(uint32_t currentImage) {
 template void BaseRayTracingRenderer::createUniformBuffers<MinimumUBO>();
 template void BaseRayTracingRenderer::updateUniformBuffer<MinimumUBO>(uint32_t currentImage);
 
-
-// BufferManager Class
-uint32_t BufferManager::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-
-    throw std::runtime_error("failed to find suitable memory type!");
-}
-
-void BufferManager::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = size;
-    bufferInfo.usage = usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VkResult result = vkCreateBuffer(device, &bufferInfo, nullptr, &buffer);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("failed to create buffer!");
-    }
-
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    if(usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT){
-        VkMemoryAllocateFlagsInfo flagsInfo{};
-        flagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-        flagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-        allocInfo.pNext = &flagsInfo;
-    }
-
-    result = vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate buffer memory!");
-    }
-
-    vkBindBufferMemory(device, buffer, bufferMemory, 0);
-}
-
-void BufferManager::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size){
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands();
-    VkBufferCopy copyRegion{};
-    copyRegion.size = size;
-    vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
-    endSingleTimeCommands(commandBuffer);
-}
-
-
-
-VkCommandBuffer BufferManager::beginSingleTimeCommands(){
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandPool = commandPool;
-    allocInfo.commandBufferCount = 1;
-
-    VkCommandBuffer commandBuffer;
-    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    vkBeginCommandBuffer(commandBuffer, &beginInfo);
-
-    return commandBuffer;
-}
-
-void BufferManager::endSingleTimeCommands(VkCommandBuffer commandBuffer){
-    vkEndCommandBuffer(commandBuffer);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffer;
-
-    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(graphicsQueue);
-
-    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
-}
-
-void BufferManager::waitIdle(){
-    vkDeviceWaitIdle(device);
-}
-
-void BufferManager::createVertexBuffer(BaseObject* object) { 
-    VkDeviceSize bufferSize = sizeof(object->vertices[0]) * object->vertices.size();
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-
-    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-    void* data;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, object->vertices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, object->vertexBuffer, object->vertexBufferMemory);
-
-    copyBuffer(stagingBuffer, object->vertexBuffer, bufferSize);
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
-}
-void BufferManager::createIndexBuffer(BaseObject* object) { 
-    VkDeviceSize bufferSize = sizeof(object->indices[0]) * object->indices.size();
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-
-    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-    void* data;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, object->indices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT| VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, object->indexBuffer, object->indexBufferMemory);
-
-    copyBuffer(stagingBuffer, object->indexBuffer, bufferSize);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
-
-}

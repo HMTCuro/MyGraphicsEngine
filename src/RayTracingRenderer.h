@@ -1,8 +1,11 @@
 #pragma once
 
 #include "renderer.h"
-#include "whiteModelPipeline.h"
+#include "pipeline.h"
+#include "accelerationStructure.h"
+
 #include <memory>
+#include <map>
 
 const std::vector<const char*> rayTracingDeviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -16,47 +19,6 @@ const std::vector<const char*> rayTracingDeviceExtensions = {
 };
 
 // Holds data for a scratch buffer used as a temporary storage during acceleration structure builds
-struct ScratchBuffer
-{
-	uint64_t       deviceAddress;
-	VkBuffer       handle;
-	VkDeviceMemory memory;
-};
-
-// Wraps all data required for an acceleration structure
-struct AccelerationStructure
-{
-	VkAccelerationStructureKHR          handle;
-	uint64_t                            deviceAddress;
-	VkBuffer                            buffer;
-    VkDeviceMemory                      memory;
-};
-
-class BufferManager{
-public:
-    void setProperties(VkDevice device, VkPhysicalDevice physicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue){
-        this->device = device;
-        this->physicalDevice = physicalDevice;
-        this->commandPool = commandPool;
-        this->graphicsQueue = graphicsQueue;
-    }
-    void createBuffer(
-        VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, 
-        VkBuffer& buffer, VkDeviceMemory& bufferMemory);
-    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
-    VkCommandBuffer beginSingleTimeCommands();
-    void endSingleTimeCommands(VkCommandBuffer commandBuffer);
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-    void waitIdle();
-
-    void createIndexBuffer(BaseObject* object);
-    void createVertexBuffer(BaseObject* object);
-private:
-    VkDevice device;
-    VkPhysicalDevice physicalDevice;
-    VkCommandPool commandPool;
-    VkQueue graphicsQueue;
-};
 
 class BaseRayTracingRenderer{
 public:
@@ -71,6 +33,15 @@ public:
 
 private:
     // Example variables
+    std::vector<Mesh*> meshes{
+        new RoomMesh(),
+        new CubeMesh()
+    };
+    enum MeshType{
+        ROOM,
+        CUBE
+    };
+    std::vector<MeshInstance> meshInstances;
     std::vector<std::unique_ptr<BaseObject>> objects;
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
@@ -89,7 +60,8 @@ private:
     std::vector<VkImageView> swapChainImageViews;
     std::vector<VkFramebuffer> swapChainFramebuffers;
     VkRenderPass renderPass;
-    VkDescriptorSetLayout descriptorSetLayout;
+    // VkDescriptorSetLayout descriptorSetLayout;
+    
 
     VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
@@ -151,6 +123,7 @@ private:
     BufferManager bufferManager;
 
     WhiteModelPipeline1 whiteModelPipeline;
+    WhiteModelDescriptorSetLayoutBundle whiteModelDescriptorSetLayoutBundle;
     
 
     // Core functions
