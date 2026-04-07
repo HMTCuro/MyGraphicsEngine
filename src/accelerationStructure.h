@@ -106,9 +106,9 @@ private:
 
 class BottomLevelAS{
 public:
-    void setProperties(BaseObject* object, VkDevice device, BufferManager& bufferManager, AccelerationStructureManager& asManager){
+    void setProperties(Mesh* mesh, VkDevice device, BufferManager& bufferManager, AccelerationStructureManager& asManager){
         this->device = device;
-        this->object = object;
+        this->mesh = mesh;
         this->bufferManager = bufferManager;
         this->asManager = asManager;
     }
@@ -124,14 +124,14 @@ public:
         geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
         geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
         geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-        geometry.geometry.triangles.vertexData.deviceAddress = bufferManager.getBufferDeviceAddress(object->vertexBuffer);
+        geometry.geometry.triangles.vertexData.deviceAddress = bufferManager.getBufferDeviceAddress(mesh->vertexBuffer);
         geometry.geometry.triangles.vertexStride = sizeof(Vertex);
-        geometry.geometry.triangles.maxVertex = static_cast<uint32_t>(object->vertices.size());
+        geometry.geometry.triangles.maxVertex = static_cast<uint32_t>(mesh->vertices.size());
         geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
-        geometry.geometry.triangles.indexData.deviceAddress = bufferManager.getBufferDeviceAddress(object->indexBuffer);
+        geometry.geometry.triangles.indexData.deviceAddress = bufferManager.getBufferDeviceAddress(mesh->indexBuffer);
 
         VkAccelerationStructureBuildRangeInfoKHR rangeInfo = {};
-        rangeInfo.primitiveCount = object->indices.size() / 3;
+        rangeInfo.primitiveCount = mesh->indices.size() / 3;
         rangeInfo.primitiveOffset = 0;
         rangeInfo.firstVertex = 0;
         rangeInfo.transformOffset = 0;
@@ -147,7 +147,7 @@ public:
 private:
     VkDevice device;
     AccelerationStructure blas;
-    BaseObject* object;
+    Mesh* mesh;
     BufferManager bufferManager;
     AccelerationStructureManager asManager;
 };
@@ -155,10 +155,8 @@ private:
 class TopLevelAS{
 public:
     glm::mat4 transform = glm::mat4(1.0f);
-    void setProperties(BaseObject* object, VkDevice device, BufferManager& bufferManager, AccelerationStructureManager& asManager){
-        this->object = object;
+    void setProperties(VkDevice device, BufferManager& bufferManager, AccelerationStructureManager& asManager){
         this->device = device;
-
         this->bufferManager = bufferManager;
         this->asManager = asManager;
     }
@@ -235,7 +233,6 @@ private:
     VkDevice device;
     AccelerationStructure tlas;
     AccelerationStructure blas;
-    BaseObject* object;
     BufferManager bufferManager;
     AccelerationStructureManager asManager;
 };

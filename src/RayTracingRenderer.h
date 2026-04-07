@@ -42,7 +42,6 @@ private:
         CUBE
     };
     std::vector<MeshInstance> meshInstances;
-    std::vector<std::unique_ptr<BaseObject>> objects;
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
     // Core variables
@@ -60,9 +59,6 @@ private:
     std::vector<VkImageView> swapChainImageViews;
     std::vector<VkFramebuffer> swapChainFramebuffers;
     VkRenderPass renderPass;
-    // VkDescriptorSetLayout descriptorSetLayout;
-    
-
     VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
     VkDescriptorPool descriptorPool;
@@ -81,17 +77,6 @@ private:
     VkDeviceMemory depthImageMemory;
     VkImageView depthImageView;
 
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
-
-    std::vector<Vertex> verticesTLAS;
-    std::vector<uint32_t> indicesTLAS;
-    VkBuffer vertexBufferTLAS;
-    VkDeviceMemory vertexBufferTLASMemory;
-    VkBuffer indexBufferTLAS;
-    VkDeviceMemory indexBufferTLASMemory;
 
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
@@ -116,6 +101,8 @@ private:
     AccelerationStructure blas;
     AccelerationStructure tlas;
 
+    std::vector<BottomLevelAS> blasCollections;
+    std::vector<TopLevelAS> tlasCollections;
 
     VkBuffer rayTracingShaderBindingTableBuffer;
     VkDeviceMemory rayTracingShaderBindingTableBufferMemory;
@@ -147,8 +134,8 @@ private:
     void createRayTracingDescriptorSets();
     void createRayTracingDescriptorPool();
     void createAccelerationStructures(); // Necessary: Create acceleration structures for ray tracing
-    void createBLAS();
-    void createTLAS();
+    // void createBLAS();
+    // void createTLAS();
     void createAccelerationStructure(
         VkAccelerationStructureTypeKHR asType,
         AccelerationStructure& accelerationStructure,
@@ -165,8 +152,6 @@ private:
     //     createTextureImageView();
     //     createTextureSampler();
     //     loadModel();
-    void createVertexBuffer(); // Buffer: Create vertex buffer
-    void createIndexBuffer(); // Buffer: Create index buffer
     template<typename T>
     void createUniformBuffers();
     template<typename T>
@@ -205,30 +190,8 @@ private:
     void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
-    void loadVertexAndIndex();
     void loadObjects();
     VkDeviceAddress getBufferDeviceAddress(VkBuffer buffer);
 
 };
-
-// class BaseDescriptorSet {
-// public:
-//     BaseDescriptorSet(VkDevice device, VkDescriptorSetLayout layout){
-//         this->device = device;
-//         this->descriptorSetLayout = layout;
-//     }
-//     ~BaseDescriptorSet();
-
-//     // 禁止拷贝，支持移动
-//     BaseDescriptorSet(const BaseDescriptorSet&) = delete;
-//     BaseDescriptorSet& operator=(const BaseDescriptorSet&) = delete;
-//     BaseDescriptorSet(BaseDescriptorSet&& other) noexcept;
-
-//     virtual void createDescriptorSetLayout();
-//     virtual std::vector<VkWriteDescriptorSet> createDescriptorWrites();
-//     VkDescriptorSetLayout getHandle() const { return descriptorSetLayout; }
-// protected:
-//     VkDevice device;
-//     VkDescriptorSetLayout descriptorSetLayout;
-// };
 

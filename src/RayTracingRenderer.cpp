@@ -6,7 +6,6 @@
 
 void BaseRayTracingRenderer::initVulkan() {
     // Initialize Vulkan instance, devices, swapchain, etc.
-    loadVertexAndIndex();
     createInstance();
     setupDebugMessenger();
     if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
@@ -28,8 +27,6 @@ void BaseRayTracingRenderer::initVulkan() {
     //     createTextureImageView();
     //     createTextureSampler();
     loadObjects();
-    createVertexBuffer();
-    createIndexBuffer();
     createAccelerationStructures();
 
     // createRayTracingDescriptorSetLayout();
@@ -122,13 +119,6 @@ void BaseRayTracingRenderer::cleanupVulkan() {
         vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
     }
 
-    for(auto& object: objects){
-        vkDestroyBuffer(device, object->vertexBuffer, nullptr);
-        vkFreeMemory(device, object->vertexBufferMemory, nullptr);
-        vkDestroyBuffer(device, object->indexBuffer, nullptr);
-        vkFreeMemory(device, object->indexBufferMemory, nullptr);
-    }
-
     for(auto& mesh: meshes){
         vkDestroyBuffer(device, mesh->vertexBuffer, nullptr);
         vkFreeMemory(device, mesh->vertexBufferMemory, nullptr);
@@ -136,28 +126,19 @@ void BaseRayTracingRenderer::cleanupVulkan() {
         vkFreeMemory(device, mesh->indexBufferMemory, nullptr);
     }
 
-    vkDestroyBuffer(device, vertexBuffer, nullptr);
-    vkFreeMemory(device, vertexBufferMemory, nullptr);
-    vkDestroyBuffer(device, indexBuffer, nullptr);
-    vkFreeMemory(device, indexBufferMemory, nullptr);
-    vkDestroyBuffer(device, vertexBufferTLAS, nullptr);
-    vkFreeMemory(device, vertexBufferTLASMemory, nullptr);
-    vkDestroyBuffer(device, indexBufferTLAS, nullptr);
-    vkFreeMemory(device, indexBufferTLASMemory, nullptr);
 
-
-    // 动态获取vkDestroyAccelerationStructureKHR函数指针
-    auto fpDestroyAccelerationStructureKHR = (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR");
-    if (fpDestroyAccelerationStructureKHR) {
-        fpDestroyAccelerationStructureKHR(device, tlas.handle, nullptr);
-        fpDestroyAccelerationStructureKHR(device, blas.handle, nullptr);
-    } else {
-        std::cerr << "Failed to load vkDestroyAccelerationStructureKHR!" << std::endl;
-    }
-    vkDestroyBuffer(device, tlas.buffer, nullptr);
-    vkFreeMemory(device, tlas.memory, nullptr);
-    vkDestroyBuffer(device, blas.buffer, nullptr);
-    vkFreeMemory(device, blas.memory, nullptr);
+    // // 动态获取vkDestroyAccelerationStructureKHR函数指针
+    // auto fpDestroyAccelerationStructureKHR = (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR");
+    // if (fpDestroyAccelerationStructureKHR) {
+    //     fpDestroyAccelerationStructureKHR(device, tlas.handle, nullptr);
+    //     fpDestroyAccelerationStructureKHR(device, blas.handle, nullptr);
+    // } else {
+    //     std::cerr << "Failed to load vkDestroyAccelerationStructureKHR!" << std::endl;
+    // }
+    // vkDestroyBuffer(device, tlas.buffer, nullptr);
+    // vkFreeMemory(device, tlas.memory, nullptr);
+    // vkDestroyBuffer(device, blas.buffer, nullptr);
+    // vkFreeMemory(device, blas.memory, nullptr);
 
     vkDestroyCommandPool(device, commandPool, nullptr);
     whiteModelPipeline.destroyPipeline();
@@ -166,8 +147,8 @@ void BaseRayTracingRenderer::cleanupVulkan() {
     // vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     // vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
-    vkDestroyPipeline(device, rayTracingPipeline, nullptr);
-    vkDestroyPipelineLayout(device, rayTracingPipelineLayout, nullptr);
+    // vkDestroyPipeline(device, rayTracingPipeline, nullptr);
+    // vkDestroyPipelineLayout(device, rayTracingPipelineLayout, nullptr);
     vkDestroyDescriptorSetLayout(device, rayTracingDescriptorSetLayout, nullptr);
 
     vkDestroyRenderPass(device, renderPass, nullptr);
@@ -721,115 +702,122 @@ void BaseRayTracingRenderer::createAccelerationStructure(
 
 }
 
-void BaseRayTracingRenderer::createBLAS(){
-    std::cout << "--------Creating BLAS---------" << std::endl;
+// void BaseRayTracingRenderer::createBLAS(){
+//     std::cout << "--------Creating BLAS---------" << std::endl;
 
-    VkResult result;
+//     VkResult result;
 
-    // Bottom-level acceleration structure
-    VkAccelerationStructureGeometryKHR geometry{};
-    geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-    geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-    geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
-    geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
-    geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-    geometry.geometry.triangles.vertexData.deviceAddress = getBufferDeviceAddress(vertexBuffer);
-    geometry.geometry.triangles.vertexStride = sizeof(Vertex);
-    geometry.geometry.triangles.maxVertex = static_cast<uint32_t>(vertices.size());
-    geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
-    geometry.geometry.triangles.indexData.deviceAddress = getBufferDeviceAddress(indexBuffer);
+//     // Bottom-level acceleration structure
+//     VkAccelerationStructureGeometryKHR geometry{};
+//     geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+//     geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+//     geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+//     geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+//     geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+//     geometry.geometry.triangles.vertexData.deviceAddress = getBufferDeviceAddress(vertexBuffer);
+//     geometry.geometry.triangles.vertexStride = sizeof(Vertex);
+//     geometry.geometry.triangles.maxVertex = static_cast<uint32_t>(vertices.size());
+//     geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
+//     geometry.geometry.triangles.indexData.deviceAddress = getBufferDeviceAddress(indexBuffer);
 
-    VkAccelerationStructureBuildRangeInfoKHR rangeInfo = {};
-    rangeInfo.primitiveCount = indices.size() / 3;
-    rangeInfo.primitiveOffset = 0;
-    rangeInfo.firstVertex = 0;
-    rangeInfo.transformOffset = 0;
+//     VkAccelerationStructureBuildRangeInfoKHR rangeInfo = {};
+//     rangeInfo.primitiveCount = indices.size() / 3;
+//     rangeInfo.primitiveOffset = 0;
+//     rangeInfo.firstVertex = 0;
+//     rangeInfo.transformOffset = 0;
 
-    createAccelerationStructure(
-        VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-        blas,
-        geometry,
-        rangeInfo,
-        VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
-    );
-}
+//     createAccelerationStructure(
+//         VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+//         blas,
+//         geometry,
+//         rangeInfo,
+//         VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+//     );
+// }
 
-void BaseRayTracingRenderer::createTLAS(){
-    std::cout << "--------Creating TLAS---------" << std::endl;
+// void BaseRayTracingRenderer::createTLAS(){
+//     std::cout << "--------Creating TLAS---------" << std::endl;
 
-    VkResult result;
+//     VkResult result;
 
-    auto toTransformMatrixKHR = [](const glm::mat4& m) {
-        VkTransformMatrixKHR t;
-        memcpy(&t, glm::value_ptr(glm::transpose(m)), sizeof(t));
-        return t;
-    };
+//     auto toTransformMatrixKHR = [](const glm::mat4& m) {
+//         VkTransformMatrixKHR t;
+//         memcpy(&t, glm::value_ptr(glm::transpose(m)), sizeof(t));
+//         return t;
+//     };
 
-    std::vector<VkAccelerationStructureInstanceKHR> instances;
+//     std::vector<VkAccelerationStructureInstanceKHR> instances;
     
-    VkAccelerationStructureInstanceKHR instance{};
-    instance.transform = toTransformMatrixKHR(glm::mat4(1.0f)); // Identity
-    instance.instanceCustomIndex = 0;
-    instance.mask = 0xFF;
-    instance.accelerationStructureReference = blas.deviceAddress;
-    instance.instanceShaderBindingTableRecordOffset = 0; 
-    instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-    instances.push_back(instance);
+//     VkAccelerationStructureInstanceKHR instance{};
+//     instance.transform = toTransformMatrixKHR(glm::mat4(1.0f)); // Identity
+//     instance.instanceCustomIndex = 0;
+//     instance.mask = 0xFF;
+//     instance.accelerationStructureReference = blas.deviceAddress;
+//     instance.instanceShaderBindingTableRecordOffset = 0; 
+//     instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+//     instances.push_back(instance);
 
-    VkBuffer tlasInstanceBuffer;
-    VkDeviceMemory tlasInstanceBufferMemory;
-    VkDeviceSize instanceBufferSize = instances.size() * sizeof(VkAccelerationStructureInstanceKHR);
-    bufferManager.createBuffer(
-        instanceBufferSize,
-        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        tlasInstanceBuffer,
-        tlasInstanceBufferMemory
-    );
+//     VkBuffer tlasInstanceBuffer;
+//     VkDeviceMemory tlasInstanceBufferMemory;
+//     VkDeviceSize instanceBufferSize = instances.size() * sizeof(VkAccelerationStructureInstanceKHR);
+//     bufferManager.createBuffer(
+//         instanceBufferSize,
+//         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+//         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+//         tlasInstanceBuffer,
+//         tlasInstanceBufferMemory
+//     );
 
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    bufferManager.createBuffer(
-        instanceBufferSize,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        stagingBuffer,
-        stagingBufferMemory
-    );
-    bufferManager.copyBuffer(stagingBuffer, tlasInstanceBuffer, instanceBufferSize);
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
+//     VkBuffer stagingBuffer;
+//     VkDeviceMemory stagingBufferMemory;
+//     bufferManager.createBuffer(
+//         instanceBufferSize,
+//         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+//         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+//         stagingBuffer,
+//         stagingBufferMemory
+//     );
+//     bufferManager.copyBuffer(stagingBuffer, tlasInstanceBuffer, instanceBufferSize);
+//     vkDestroyBuffer(device, stagingBuffer, nullptr);
+//     vkFreeMemory(device, stagingBufferMemory, nullptr);
 
 
-    // Top-level acceleration structure
-    VkAccelerationStructureGeometryInstancesDataKHR geometryInstances{};
-    geometryInstances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
-    geometryInstances.data.deviceAddress = getBufferDeviceAddress(tlasInstanceBuffer);
-    VkAccelerationStructureGeometryKHR geometry{};
-    geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-    geometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
-    geometry.geometry.instances = geometryInstances;
-    VkAccelerationStructureBuildRangeInfoKHR rangeInfo = {};
-    rangeInfo.primitiveCount = static_cast<uint32_t>(instances.size());
-    createAccelerationStructure(
-        VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-        tlas,
-        geometry,
-        rangeInfo,
-        VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
-    );
+//     // Top-level acceleration structure
+//     VkAccelerationStructureGeometryInstancesDataKHR geometryInstances{};
+//     geometryInstances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+//     geometryInstances.data.deviceAddress = getBufferDeviceAddress(tlasInstanceBuffer);
+//     VkAccelerationStructureGeometryKHR geometry{};
+//     geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+//     geometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+//     geometry.geometry.instances = geometryInstances;
+//     VkAccelerationStructureBuildRangeInfoKHR rangeInfo = {};
+//     rangeInfo.primitiveCount = static_cast<uint32_t>(instances.size());
+//     createAccelerationStructure(
+//         VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+//         tlas,
+//         geometry,
+//         rangeInfo,
+//         VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+//     );
     
-    vkDestroyBuffer(device, tlasInstanceBuffer, nullptr);
-    vkFreeMemory(device, tlasInstanceBufferMemory, nullptr);
+//     vkDestroyBuffer(device, tlasInstanceBuffer, nullptr);
+//     vkFreeMemory(device, tlasInstanceBufferMemory, nullptr);
     
-}
+// }
 
 void BaseRayTracingRenderer::createAccelerationStructures(){
     // Placeholder for acceleration structure creation
     // This will involve creating bottom-level and top-level acceleration structures, allocating memory, and building them with geometry data.
     std::cout << "--------Creating Acceleration Structures (Placeholder)---------" << std::endl;
-    createBLAS();
-    createTLAS();
+    // createBLAS();
+    // createTLAS();
+    // for (auto& mesh : meshes) {
+    //     auto tmpBLAS = new BottomLevelAS();
+    //     tmpBLAS->setProperties(
+    //         mesh,
+    //         device, bufferManager, asManager);
+
+    // }
     
 }
 
@@ -984,56 +972,6 @@ void BaseRayTracingRenderer::createFramebuffers(){
             throw std::runtime_error("failed to create framebuffer!");
         }
     }
-}
-
-void BaseRayTracingRenderer::createVertexBuffer(){
-    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-
-    bufferManager.createBuffer(
-        bufferSize, 
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
-        stagingBuffer, stagingBufferMemory);
-
-    void* data;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, vertices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    bufferManager.createBuffer(
-        bufferSize, 
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT| VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, 
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
-        vertexBuffer, vertexBufferMemory);
-
-    bufferManager.copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
-}
-
-void BaseRayTracingRenderer::createIndexBuffer(){
-    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-
-    bufferManager.createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-    void* data;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, indices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    bufferManager.createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT| VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
-
-    bufferManager.copyBuffer(stagingBuffer, indexBuffer, bufferSize);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
 void BaseRayTracingRenderer::createDescriptorPool(){
@@ -1226,17 +1164,6 @@ void BaseRayTracingRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, 
         scissor.offset = {0,0};
         scissor.extent = swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-        // for(auto&object: objects){
-        //     VkBuffer vertexBuffers[] = {object->vertexBuffer};
-        //     VkDeviceSize offsets[] = {0};
-        //     vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        //     vkCmdBindIndexBuffer(commandBuffer, object->indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-        //     glm::mat4 modelMat = glm::mat4(15.0f);
-        //     vkCmdPushConstants(commandBuffer, whiteModelPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &modelMat);
-        //     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, whiteModelPipeline.getLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
-        //     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(object->indices.size()), 1, 0, 0, 0);
-        // }
 
         for(auto&meshInstance: meshInstances){
             VkBuffer vertexBuffers[] = {meshInstance.mesh->vertexBuffer};
@@ -1506,92 +1433,7 @@ uint32_t BaseRayTracingRenderer::findMemoryType(uint32_t typeFilter, VkMemoryPro
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-void BaseRayTracingRenderer::loadVertexAndIndex(){
-    // Load your vertex and index data here
-    // For example, you can hardcode some data or load from a model file
-    // Triangle
-    // vertices = {
-    //     {{0.0f, -0.5f, 10.0f}, {1.0f, 0.0f, 0.0f}},
-    //     {{0.5f, 0.5f, 10.0f}, {0.0f, 1.0f, 0.0f}},
-    //     {{-0.5f, 0.5f, 10.0f}, {0.0f, 0.0f, 1.0f}}
-    // };
-
-    // indices = {
-    //     0, 1, 2
-    // };
-
-    // A room with 1 floor, 1 ceiling, and 4 walls (12 triangles)
-    std::vector<Vertex> cube = {
-        {{-1.0f, -1.0f, -1.0f}, {1.0f, 0.0f, 0.0f}},
-        {{-1.0f, -1.0f,  1.0f}, {0.0f, 1.0f, 0.0f}},
-        {{ 1.0f, -1.0f, -1.0f}, {0.0f, 0.0f, 1.0f}},
-        {{ 1.0f, -1.0f,  1.0f}, {1.0f, 1.0f, 1.0f}},
-        {{-1.0f,  1.0f, -1.0f}, {1.0f, 0.0f, 0.0f}},
-        {{-1.0f,  1.0f,  1.0f}, {0.0f, 1.0f, 0.0f}},
-        {{ 1.0f,  1.0f, -1.0f}, {0.0f, 0.0f, 1.0f}},
-        {{ 1.0f,  1.0f,  1.0f}, {1.0f, 1.0f, 1.0f}},
-    };
-    std::vector<uint32_t> cubeIndices = {
-        0, 3, 1, 0, 2, 3, // floor
-        4, 5, 6, 5, 7, 6, // ceiling
-        0, 1, 4, 1, 5, 4, // wall 1
-        2, 6, 3, 6, 7, 3, // wall 2
-        0, 6, 2, 6, 0, 4, // wall 3
-        1, 3, 7, 7, 5, 1 // wall 4
-    }; 
-
-    std::vector<glm::vec3> colors = {
-        {1.0f, 0.0f, 0.0f}, // Red
-        {0.0f, 1.0f, 0.0f}, // Green
-        {0.0f, 0.0f, 1.0f}, // Blue
-        {1.0f, 1.0f, 1.0f}, // White
-        {1.0f, 1.0f, 0.0f}, // Yellow
-        {1.0f, 0.0f, 1.0f}, // Magenta
-        {0.0f, 1.0f, 1.0f}, // Cyan
-        {1.0f, 1.0f, 1.0f}  // White
-    };
-    uint32_t materialIndex = 0; // Placeholder for material index, can be used to assign different materials to different faces
-
-
-    for (const auto& cubeIndices : cubeIndices){
-        vertices.push_back({cube[cubeIndices].pos, colors[materialIndex/6]});
-        indices.push_back(materialIndex);
-
-        verticesTLAS.push_back({cube[cubeIndices].pos, colors[materialIndex/6]});
-        if(materialIndex%3 == 0){
-            indicesTLAS.push_back(materialIndex);
-        } else {
-            indicesTLAS.push_back(materialIndex+2*(materialIndex%3==1)-1);
-        }
-        materialIndex++;
-    }
-
-    for(const auto& vertex : vertices){
-        verticesTLAS.push_back(vertex);
-    }
-    for(uint32_t i=0;i<indices.size();++i){
-        if(i%3 == 0){
-            indicesTLAS.push_back(i);
-        } else {
-            indicesTLAS.push_back(i+2*(i%3==1)-1);
-        }
-    }
-
-}
-
 void BaseRayTracingRenderer::loadObjects(){ 
-    objects.push_back(std::make_unique<Room>());
-    objects.push_back(std::make_unique<Cube>());
-        objects.back()->position = glm::vec3(0.0f, 0.0f, -0.2f);
-        objects.back()->rotation = glm::vec3(glm::radians(45.0f),glm::radians(45.0f), 0.0f);
-        objects.back()->scale = glm::vec3(0.1f, 0.1f, 0.1f);
-
-    for (auto& object : objects) {
-        object->init();
-        bufferManager.createVertexBuffer(object.get());
-        bufferManager.createIndexBuffer(object.get());
-    }
-
     for (auto& mesh: meshes)
     {
         bufferManager.createMeshVertexBuffer(mesh);

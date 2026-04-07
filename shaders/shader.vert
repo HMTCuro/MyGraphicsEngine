@@ -14,6 +14,7 @@ layout (push_constant, std430) uniform PushConstants {
 layout (location=0) out vec3 fragColor;
 layout (location=1) out vec3 fragNorm;
 layout (location=2) out vec3 fragWorldPos;
+layout (location=3) out float fragDepth;
 void main(){
     fragColor = color;
     fragNorm = normalize(mat3(pushConstants.model) * norm);
@@ -34,7 +35,7 @@ void main(){
     // };
     
     fragWorldPos = (pushConstants.model * vec4(pos, 1.0)).xyz;
-    vec3 cameraPos = vec3(0.0f, 2.8f, -3.8f);
+    vec3 cameraPos = vec3(0.0f, 1.8f, -3.8f);
 
     mat4 perspective = {
         {1.0f/(tanHalfFovy * 1.0f),0.0f,0.0f,0.0f},
@@ -51,6 +52,8 @@ void main(){
     };
     gl_Position = perspective * view * vec4(fragWorldPos, 1.0);
     gl_Position.y *= yStrech;
+
+    fragDepth =  gl_Position.z ;
 
 }
 
