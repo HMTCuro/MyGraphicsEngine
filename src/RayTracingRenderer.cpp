@@ -19,7 +19,7 @@ void BaseRayTracingRenderer::initVulkan() {
     createDescriptorSetLayout(); // For all descriptor sets
     createGraphicsPipeline(); // For all graphics pipelines
     createCommandPool();
-    initBufferManager();
+    initContextAndManager();
     createColorResources();
     createDepthResources();
     createFramebuffers();
@@ -126,6 +126,10 @@ void BaseRayTracingRenderer::cleanupVulkan() {
         vkFreeMemory(device, mesh->indexBufferMemory, nullptr);
     }
 
+    for (auto& blas : blasCollections) {
+        blas->destroy();
+    }
+
 
     // // 动态获取vkDestroyAccelerationStructureKHR函数指针
     // auto fpDestroyAccelerationStructureKHR = (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR");
@@ -149,7 +153,7 @@ void BaseRayTracingRenderer::cleanupVulkan() {
 
     // vkDestroyPipeline(device, rayTracingPipeline, nullptr);
     // vkDestroyPipelineLayout(device, rayTracingPipelineLayout, nullptr);
-    vkDestroyDescriptorSetLayout(device, rayTracingDescriptorSetLayout, nullptr);
+    // vkDestroyDescriptorSetLayout(device, rayTracingDescriptorSetLayout, nullptr);
 
     vkDestroyRenderPass(device, renderPass, nullptr);
     vkDestroyDevice(device, nullptr);
@@ -806,18 +810,15 @@ void BaseRayTracingRenderer::createAccelerationStructure(
 // }
 
 void BaseRayTracingRenderer::createAccelerationStructures(){
-    // Placeholder for acceleration structure creation
-    // This will involve creating bottom-level and top-level acceleration structures, allocating memory, and building them with geometry data.
     std::cout << "--------Creating Acceleration Structures (Placeholder)---------" << std::endl;
-    // createBLAS();
-    // createTLAS();
-    // for (auto& mesh : meshes) {
-    //     auto tmpBLAS = new BottomLevelAS();
-    //     tmpBLAS->setProperties(
-    //         mesh,
-    //         device, bufferManager, asManager);
+    // blas for each mesh
+    for(auto &mesh: meshes){
+        auto tmpBlas = std::make_unique<BottomLevelAS>();
+        tmpBlas->init(mesh,&ctx,&bufferManager,&asManager);
+        tmpBlas->build();
+        blasCollections.push_back(std::move(tmpBlas));
+    }
 
-    // }
     
 }
 

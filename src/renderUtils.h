@@ -18,18 +18,17 @@ struct ScratchBuffer
 
 class RendererContext{
 public:
-    VkDevice device;
-    VkPhysicalDevice physicalDevice;
-    VkInstance instance;
+    VkDevice device= VK_NULL_HANDLE;
+    VkPhysicalDevice physicalDevice= VK_NULL_HANDLE;
+    VkInstance instance= VK_NULL_HANDLE;
+    VkCommandPool commandPool= VK_NULL_HANDLE;
+    VkQueue graphicsQueue= VK_NULL_HANDLE;
 };
 
 class BufferManager{
 public:
-    void setProperties(VkDevice device, VkPhysicalDevice physicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue){
-        this->device = device;
-        this->physicalDevice = physicalDevice;
-        this->commandPool = commandPool;
-        this->graphicsQueue = graphicsQueue;
+    void init(RendererContext* ctx){
+        this->pCtx = ctx;
     }
     
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
@@ -39,13 +38,13 @@ public:
         bufferInfo.usage = usage;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        VkResult result = vkCreateBuffer(device, &bufferInfo, nullptr, &buffer);
+        VkResult result = vkCreateBuffer(pCtx->device, &bufferInfo, nullptr, &buffer);
         if (result != VK_SUCCESS) {
             throw std::runtime_error("failed to create buffer!");
         }
 
         VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+        vkGetBufferMemoryRequirements(pCtx->device, buffer, &memRequirements);
 
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -59,12 +58,12 @@ public:
             allocInfo.pNext = &flagsInfo;
         }
 
-        result = vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory);
+        result = vkAllocateMemory(pCtx->device, &allocInfo, nullptr, &bufferMemory);
         if (result != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate buffer memory!");
         }
 
-        vkBindBufferMemory(device, buffer, bufferMemory, 0);
+        vkBindBufferMemory(pCtx->device, buffer, bufferMemory, 0);
     }
 
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size){
@@ -79,11 +78,11 @@ public:
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandPool = commandPool;
+        allocInfo.commandPool = pCtx->commandPool;
         allocInfo.commandBufferCount = 1;
 
         VkCommandBuffer commandBuffer;
-        vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+        vkAllocateCommandBuffers(pCtx->device, &allocInfo, &commandBuffer);
 
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -102,14 +101,14 @@ public:
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &commandBuffer;
 
-        vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-        vkQueueWaitIdle(graphicsQueue);
+        vkQueueSubmit(pCtx->graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(pCtx->graphicsQueue);
 
-        vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+        vkFreeCommandBuffers(pCtx->device, pCtx->commandPool, 1, &commandBuffer);
     }
 
     void waitIdle(){
-        vkDeviceWaitIdle(device);
+        vkDeviceWaitIdle(pCtx->device);
     }
 
     void createMeshVertexBuffer(Mesh* object) { 
@@ -121,14 +120,14 @@ public:
         createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
         void* data;
-        vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
+        vkMapMemory(pCtx->device, stagingBufferMemory, 0, bufferSize, 0, &data);
             memcpy(data, object->vertices.data(), (size_t) bufferSize);
-        vkUnmapMemory(device, stagingBufferMemory);
+        vkUnmapMemory(pCtx->device, stagingBufferMemory);
         createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, object->vertexBuffer, object->vertexBufferMemory);
 
         copyBuffer(stagingBuffer, object->vertexBuffer, bufferSize);
-        vkDestroyBuffer(device, stagingBuffer, nullptr);
-        vkFreeMemory(device, stagingBufferMemory, nullptr);
+        vkDestroyBuffer(pCtx->device, stagingBuffer, nullptr);
+        vkFreeMemory(pCtx->device, stagingBufferMemory, nullptr);
     }
 
     void createMeshIndexBuffer(Mesh* object) { 
@@ -140,23 +139,22 @@ public:
         createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
         void* data;
-        vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
+        vkMapMemory(pCtx->device, stagingBufferMemory, 0, bufferSize, 0, &data);
             memcpy(data, object->indices.data(), (size_t) bufferSize);
-        vkUnmapMemory(device, stagingBufferMemory);
+        vkUnmapMemory(pCtx->device, stagingBufferMemory);
 
         createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT| VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, object->indexBuffer, object->indexBufferMemory);
 
         copyBuffer(stagingBuffer, object->indexBuffer, bufferSize);
 
-        vkDestroyBuffer(device, stagingBuffer, nullptr);
-        vkFreeMemory(device, stagingBufferMemory, nullptr);
+        vkDestroyBuffer(pCtx->device, stagingBuffer, nullptr);
+        vkFreeMemory(pCtx->device, stagingBufferMemory, nullptr);
 
     }
    
-
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties){
         VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+        vkGetPhysicalDeviceMemoryProperties(pCtx->physicalDevice, &memProperties);
 
         for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
             if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
@@ -171,15 +169,12 @@ public:
         VkBufferDeviceAddressInfo bufferDeviceAddressInfo{};
         bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
         bufferDeviceAddressInfo.buffer = buffer;
-        auto fpGetBufferDeviceAddress = (PFN_vkGetBufferDeviceAddressKHR) vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddressKHR");
-        VkDeviceAddress deviceAddress = fpGetBufferDeviceAddress(device, &bufferDeviceAddressInfo);
+        auto fpGetBufferDeviceAddress = (PFN_vkGetBufferDeviceAddressKHR) vkGetDeviceProcAddr(pCtx->device, "vkGetBufferDeviceAddressKHR");
+        VkDeviceAddress deviceAddress = fpGetBufferDeviceAddress(pCtx->device, &bufferDeviceAddressInfo);
         return deviceAddress;
     }
 private:
-    VkDevice device;
-    VkPhysicalDevice physicalDevice;
-    VkCommandPool commandPool;
-    VkQueue graphicsQueue;
+    RendererContext* pCtx;
 };
 
 // BufferManager Class

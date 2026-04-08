@@ -42,8 +42,9 @@ private:
         CUBE
     };
     std::vector<MeshInstance> meshInstances;
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
+
+
+
     // Core variables
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
@@ -70,6 +71,7 @@ private:
     VkPipelineLayout computePipelineLayout;
     VkDescriptorSetLayout computeDescriptorSetLayout;
 
+
     VkImage colorImage;
     VkDeviceMemory colorImageMemory;
     VkImageView colorImageView;
@@ -77,6 +79,9 @@ private:
     VkDeviceMemory depthImageMemory;
     VkImageView depthImageView;
 
+    RendererContext ctx;
+    BufferManager bufferManager;
+    AccelerationStructureManager asManager;
 
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
@@ -101,13 +106,13 @@ private:
     AccelerationStructure blas;
     AccelerationStructure tlas;
 
-    std::vector<BottomLevelAS> blasCollections;
-    std::vector<TopLevelAS> tlasCollections;
+    std::vector<std::unique_ptr<BottomLevelAS>> blasCollections;
+    std::vector<std::unique_ptr<TopLevelAS>> tlasCollections;
 
     VkBuffer rayTracingShaderBindingTableBuffer;
     VkDeviceMemory rayTracingShaderBindingTableBufferMemory;
 
-    BufferManager bufferManager;
+    
 
     WhiteModelPipeline1 whiteModelPipeline;
     WhiteModelDescriptorSetLayoutBundle whiteModelDescriptorSetLayoutBundle;
@@ -123,8 +128,14 @@ private:
     void createImageViews(); // Necessary: Create image views for swap chain images
     void createRenderPass(); // Necessary: Create render pass for framebuffers
 
-    void initBufferManager(){
-        bufferManager.setProperties(device, physicalDevice, commandPool, graphicsQueue);
+    void initContextAndManager(){
+        ctx.instance = instance;
+        ctx.physicalDevice = physicalDevice;
+        ctx.device = device;
+        ctx.commandPool = commandPool;
+        ctx.graphicsQueue = graphicsQueue;
+        bufferManager.init(&ctx);
+        asManager.init(&ctx, &bufferManager);
     }
     void createGraphicsPipeline(); // Pipeline: Create graphics pipeline
 

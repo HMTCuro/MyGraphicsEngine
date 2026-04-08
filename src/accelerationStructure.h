@@ -18,9 +18,9 @@ struct AccelerationStructure
 
 class AccelerationStructureManager{
 public:
-    void getProperties(VkDevice device, BufferManager& bufferManager){
-        this->device = device;
-        this->bufferManager = bufferManager;
+    void init(RendererContext* pCtx, BufferManager* pBufferManager){
+        this->pCtx = pCtx;
+        this->pBufferManager = pBufferManager;
     }
     void createAccelerationStructure(
         VkAccelerationStructureTypeKHR asType,
@@ -31,10 +31,10 @@ public:
     ) {
         VkResult result;
         // 动态获取KHR扩展函数指针
-        auto fpCreateAccelerationStructureKHR = (PFN_vkCreateAccelerationStructureKHR)vkGetDeviceProcAddr(device, "vkCreateAccelerationStructureKHR");
-        auto fpCmdBuildAccelerationStructuresKHR = (PFN_vkCmdBuildAccelerationStructuresKHR)vkGetDeviceProcAddr(device, "vkCmdBuildAccelerationStructuresKHR");
-        auto fpGetAccelerationStructureDeviceAddressKHR = (PFN_vkGetAccelerationStructureDeviceAddressKHR)vkGetDeviceProcAddr(device, "vkGetAccelerationStructureDeviceAddressKHR");
-        auto fpGetAccelerationStructureBuildSizesKHR = (PFN_vkGetAccelerationStructureBuildSizesKHR)vkGetDeviceProcAddr(device, "vkGetAccelerationStructureBuildSizesKHR");
+        auto fpCreateAccelerationStructureKHR = (PFN_vkCreateAccelerationStructureKHR)vkGetDeviceProcAddr(pCtx->device, "vkCreateAccelerationStructureKHR");
+        auto fpCmdBuildAccelerationStructuresKHR = (PFN_vkCmdBuildAccelerationStructuresKHR)vkGetDeviceProcAddr(pCtx->device, "vkCmdBuildAccelerationStructuresKHR");
+        auto fpGetAccelerationStructureDeviceAddressKHR = (PFN_vkGetAccelerationStructureDeviceAddressKHR)vkGetDeviceProcAddr(pCtx->device, "vkGetAccelerationStructureDeviceAddressKHR");
+        auto fpGetAccelerationStructureBuildSizesKHR = (PFN_vkGetAccelerationStructureBuildSizesKHR)vkGetDeviceProcAddr(pCtx->device, "vkGetAccelerationStructureBuildSizesKHR");
 
         VkAccelerationStructureBuildGeometryInfoKHR buildGeometryInfo = {};
         buildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
@@ -45,9 +45,9 @@ public:
 
         VkAccelerationStructureBuildSizesInfoKHR buildSizesInfo = {};
         buildSizesInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
-        fpGetAccelerationStructureBuildSizesKHR(device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &buildGeometryInfo, &asBuildRangeInfo.primitiveCount, &buildSizesInfo);
+        fpGetAccelerationStructureBuildSizesKHR(pCtx->device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &buildGeometryInfo, &asBuildRangeInfo.primitiveCount, &buildSizesInfo);
 
-        bufferManager.createBuffer(
+        pBufferManager->createBuffer(
             buildSizesInfo.accelerationStructureSize,
             VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -61,7 +61,7 @@ public:
         createInfo.buffer = accelerationStructure.buffer;
         createInfo.size = buildSizesInfo.accelerationStructureSize;
         createInfo.type = asType;
-        result = fpCreateAccelerationStructureKHR(device, &createInfo, nullptr, &accelerationStructure.handle);
+        result = fpCreateAccelerationStructureKHR(pCtx->device, &createInfo, nullptr, &accelerationStructure.handle);
         if(result != VK_SUCCESS){
             throw std::runtime_error("failed to create acceleration structure!");
         }
@@ -69,7 +69,7 @@ public:
 
         // Scratch buffer
         ScratchBuffer scratchBuffer;
-        bufferManager.createBuffer(
+        pBufferManager->createBuffer(
             buildSizesInfo.buildScratchSize,
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR|
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -77,42 +77,42 @@ public:
             scratchBuffer.handle,
             scratchBuffer.memory
         );
-        scratchBuffer.deviceAddress = bufferManager.getBufferDeviceAddress(scratchBuffer.handle);
+        scratchBuffer.deviceAddress = pBufferManager->getBufferDeviceAddress(scratchBuffer.handle);
 
         buildGeometryInfo.dstAccelerationStructure = accelerationStructure.handle;
         buildGeometryInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
         buildGeometryInfo.scratchData.deviceAddress = scratchBuffer.deviceAddress;
 
-        VkCommandBuffer commandBuffer = bufferManager.beginSingleTimeCommands();
+        VkCommandBuffer commandBuffer = pBufferManager->beginSingleTimeCommands();
         const VkAccelerationStructureBuildRangeInfoKHR* rangeInfoPtr = &asBuildRangeInfo;
         // result = fpBuildAccelerationStructuresKHR(device, nullptr, 1, &buildGeometryInfo, &rangeInfoPtr);
         fpCmdBuildAccelerationStructuresKHR(commandBuffer, 1, &buildGeometryInfo, &rangeInfoPtr);
-        bufferManager.endSingleTimeCommands(commandBuffer);
+        pBufferManager->endSingleTimeCommands(commandBuffer);
 
         VkAccelerationStructureDeviceAddressInfoKHR asAddressInfo{};
         asAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
         asAddressInfo.accelerationStructure = accelerationStructure.handle;
-        accelerationStructure.deviceAddress = fpGetAccelerationStructureDeviceAddressKHR(device, &asAddressInfo);
+        accelerationStructure.deviceAddress = fpGetAccelerationStructureDeviceAddressKHR(pCtx->device, &asAddressInfo);
 
-        vkDestroyBuffer(device, scratchBuffer.handle, nullptr);
-        vkFreeMemory(device, scratchBuffer.memory, nullptr);
+        vkDestroyBuffer(pCtx->device, scratchBuffer.handle, nullptr);
+        vkFreeMemory(pCtx->device, scratchBuffer.memory, nullptr);
 
     }   
 
 private:
-    VkDevice device;
-    BufferManager bufferManager;
+    RendererContext* pCtx;
+    BufferManager* pBufferManager;
 };
 
 class BottomLevelAS{
 public:
-    void setProperties(Mesh* mesh, VkDevice device, BufferManager& bufferManager, AccelerationStructureManager& asManager){
-        this->device = device;
-        this->mesh = mesh;
-        this->bufferManager = bufferManager;
-        this->asManager = asManager;
+    void init(Mesh* pMesh,RendererContext* pCtx, BufferManager* pBufferManager, AccelerationStructureManager* pAsManager){
+        this->pMesh = pMesh;
+        this->pCtx = pCtx;
+        this->pBufferManager = pBufferManager;
+        this->pAsManager = pAsManager;
     }
-    void createBLAS(){
+    void build(){
         std::cout << "--------Creating BLAS---------" << std::endl;
 
         VkResult result;
@@ -124,19 +124,19 @@ public:
         geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
         geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
         geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-        geometry.geometry.triangles.vertexData.deviceAddress = bufferManager.getBufferDeviceAddress(mesh->vertexBuffer);
+        geometry.geometry.triangles.vertexData.deviceAddress = pBufferManager->getBufferDeviceAddress(pMesh->vertexBuffer);
         geometry.geometry.triangles.vertexStride = sizeof(Vertex);
-        geometry.geometry.triangles.maxVertex = static_cast<uint32_t>(mesh->vertices.size());
+        geometry.geometry.triangles.maxVertex = static_cast<uint32_t>(pMesh->vertices.size());
         geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
-        geometry.geometry.triangles.indexData.deviceAddress = bufferManager.getBufferDeviceAddress(mesh->indexBuffer);
+        geometry.geometry.triangles.indexData.deviceAddress = pBufferManager->getBufferDeviceAddress(pMesh->indexBuffer);
 
         VkAccelerationStructureBuildRangeInfoKHR rangeInfo = {};
-        rangeInfo.primitiveCount = mesh->indices.size() / 3;
+        rangeInfo.primitiveCount = pMesh->indices.size() / 3;
         rangeInfo.primitiveOffset = 0;
         rangeInfo.firstVertex = 0;
         rangeInfo.transformOffset = 0;
 
-        asManager.createAccelerationStructure(
+        pAsManager->createAccelerationStructure(
             VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
             blas,
             geometry,
@@ -144,21 +144,27 @@ public:
             VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
         );
     }
+    void destroy(){
+        auto fpDestroyAccelerationStructureKHR = (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(pCtx->device, "vkDestroyAccelerationStructureKHR");
+        fpDestroyAccelerationStructureKHR(pCtx->device, blas.handle, nullptr);
+        vkDestroyBuffer(pCtx->device, blas.buffer, nullptr);
+        vkFreeMemory(pCtx->device, blas.memory, nullptr);
+    }
 private:
-    VkDevice device;
+    RendererContext* pCtx;
     AccelerationStructure blas;
-    Mesh* mesh;
-    BufferManager bufferManager;
-    AccelerationStructureManager asManager;
+    Mesh* pMesh;
+    BufferManager* pBufferManager;
+    AccelerationStructureManager* pAsManager;
 };
 
 class TopLevelAS{
 public:
     glm::mat4 transform = glm::mat4(1.0f);
-    void setProperties(VkDevice device, BufferManager& bufferManager, AccelerationStructureManager& asManager){
-        this->device = device;
-        this->bufferManager = bufferManager;
-        this->asManager = asManager;
+    void init(RendererContext* pCtx, BufferManager* pBufferManager, AccelerationStructureManager* pAsManager){
+        this->pCtx = pCtx;
+        this->pBufferManager = pBufferManager;
+        this->pAsManager = pAsManager;
     }
    void createTLAS(){
     std::cout << "--------Creating TLAS---------" << std::endl;
@@ -185,7 +191,7 @@ public:
     VkBuffer tlasInstanceBuffer;
     VkDeviceMemory tlasInstanceBufferMemory;
     VkDeviceSize instanceBufferSize = instances.size() * sizeof(VkAccelerationStructureInstanceKHR);
-    bufferManager.createBuffer(
+    pBufferManager->createBuffer(
         instanceBufferSize,
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -195,29 +201,29 @@ public:
 
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
-    bufferManager.createBuffer(
+    pBufferManager->createBuffer(
         instanceBufferSize,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         stagingBuffer,
         stagingBufferMemory
     );
-    bufferManager.copyBuffer(stagingBuffer, tlasInstanceBuffer, instanceBufferSize);
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
+    pBufferManager->copyBuffer(stagingBuffer, tlasInstanceBuffer, instanceBufferSize);
+    vkDestroyBuffer(pCtx->device, stagingBuffer, nullptr);
+    vkFreeMemory(pCtx->device, stagingBufferMemory, nullptr);
 
 
     // Top-level acceleration structure
     VkAccelerationStructureGeometryInstancesDataKHR geometryInstances{};
     geometryInstances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
-    geometryInstances.data.deviceAddress = bufferManager.getBufferDeviceAddress(tlasInstanceBuffer);
+    geometryInstances.data.deviceAddress = pBufferManager->getBufferDeviceAddress(tlasInstanceBuffer);
     VkAccelerationStructureGeometryKHR geometry{};
     geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
     geometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
     geometry.geometry.instances = geometryInstances;
     VkAccelerationStructureBuildRangeInfoKHR rangeInfo = {};
     rangeInfo.primitiveCount = static_cast<uint32_t>(instances.size());
-    asManager.createAccelerationStructure(
+    pAsManager->createAccelerationStructure(
         VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
         tlas,
         geometry,
@@ -225,14 +231,14 @@ public:
         VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
     );
     
-    vkDestroyBuffer(device, tlasInstanceBuffer, nullptr);
-    vkFreeMemory(device, tlasInstanceBufferMemory, nullptr);
+    vkDestroyBuffer(pCtx->device, tlasInstanceBuffer, nullptr);
+    vkFreeMemory(pCtx->device, tlasInstanceBufferMemory, nullptr);
     
 }
 private:
-    VkDevice device;
+    RendererContext* pCtx;
     AccelerationStructure tlas;
     AccelerationStructure blas;
-    BufferManager bufferManager;
-    AccelerationStructureManager asManager;
+    BufferManager* pBufferManager;
+    AccelerationStructureManager* pAsManager;
 };
