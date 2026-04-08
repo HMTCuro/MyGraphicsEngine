@@ -150,6 +150,9 @@ public:
         vkDestroyBuffer(pCtx->device, blas.buffer, nullptr);
         vkFreeMemory(pCtx->device, blas.memory, nullptr);
     }
+    AccelerationStructure getHandle(){
+        return blas;
+    }
 private:
     RendererContext* pCtx;
     AccelerationStructure blas;
@@ -161,12 +164,13 @@ private:
 class TopLevelAS{
 public:
     glm::mat4 transform = glm::mat4(1.0f);
-    void init(RendererContext* pCtx, BufferManager* pBufferManager, AccelerationStructureManager* pAsManager){
+    void init(BottomLevelAS* pBlas, RendererContext* pCtx, BufferManager* pBufferManager, AccelerationStructureManager* pAsManager){
         this->pCtx = pCtx;
         this->pBufferManager = pBufferManager;
         this->pAsManager = pAsManager;
+        this->blas = pBlas;
     }
-   void createTLAS(){
+    void build(){
     std::cout << "--------Creating TLAS---------" << std::endl;
 
     VkResult result;
@@ -183,7 +187,7 @@ public:
     instance.transform = toTransformMatrixKHR(glm::mat4(1.0f)); // Identity
     instance.instanceCustomIndex = 0;
     instance.mask = 0xFF;
-    instance.accelerationStructureReference = blas.deviceAddress;
+    instance.accelerationStructureReference = blas->getHandle().deviceAddress;
     instance.instanceShaderBindingTableRecordOffset = 0; 
     instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
     instances.push_back(instance);
@@ -235,10 +239,19 @@ public:
     vkFreeMemory(pCtx->device, tlasInstanceBufferMemory, nullptr);
     
 }
+    void destroy(){
+        auto fpDestroyAccelerationStructureKHR = (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(pCtx->device, "vkDestroyAccelerationStructureKHR");
+        fpDestroyAccelerationStructureKHR(pCtx->device, tlas.handle, nullptr);
+        vkDestroyBuffer(pCtx->device, tlas.buffer, nullptr);
+        vkFreeMemory(pCtx->device, tlas.memory, nullptr);
+    }
+    AccelerationStructure getHandle(){
+        return tlas;
+    }
 private:
     RendererContext* pCtx;
     AccelerationStructure tlas;
-    AccelerationStructure blas;
+    BottomLevelAS* blas;
     BufferManager* pBufferManager;
     AccelerationStructureManager* pAsManager;
 };

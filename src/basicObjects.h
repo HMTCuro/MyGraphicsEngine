@@ -88,6 +88,7 @@ struct PointLight{
 
 class Mesh{
 public:
+    uint32_t id;
     std::vector<VertexN> vertices;
     std::vector<uint32_t> indices;
 

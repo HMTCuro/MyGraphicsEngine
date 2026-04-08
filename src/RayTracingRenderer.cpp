@@ -130,19 +130,9 @@ void BaseRayTracingRenderer::cleanupVulkan() {
         blas->destroy();
     }
 
-
-    // // 动态获取vkDestroyAccelerationStructureKHR函数指针
-    // auto fpDestroyAccelerationStructureKHR = (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR");
-    // if (fpDestroyAccelerationStructureKHR) {
-    //     fpDestroyAccelerationStructureKHR(device, tlas.handle, nullptr);
-    //     fpDestroyAccelerationStructureKHR(device, blas.handle, nullptr);
-    // } else {
-    //     std::cerr << "Failed to load vkDestroyAccelerationStructureKHR!" << std::endl;
-    // }
-    // vkDestroyBuffer(device, tlas.buffer, nullptr);
-    // vkFreeMemory(device, tlas.memory, nullptr);
-    // vkDestroyBuffer(device, blas.buffer, nullptr);
-    // vkFreeMemory(device, blas.memory, nullptr);
+    for(auto& tlas : tlasCollections){
+        tlas->destroy();
+    }
 
     vkDestroyCommandPool(device, commandPool, nullptr);
     whiteModelPipeline.destroyPipeline();
@@ -819,6 +809,16 @@ void BaseRayTracingRenderer::createAccelerationStructures(){
         blasCollections.push_back(std::move(tmpBlas));
     }
 
+    // tlas for each instance
+    for(auto &instance: meshInstances){
+        auto tmpTlas = std::make_unique<TopLevelAS>();
+        tmpTlas->init(
+            blasCollections[instance.mesh->id].get(),
+            &ctx,&bufferManager,&asManager);
+        tmpTlas->transform = instance.getModelMatrix();
+        tmpTlas->build();
+        tlasCollections.push_back(std::move(tmpTlas));
+    }
     
 }
 
@@ -1435,8 +1435,10 @@ uint32_t BaseRayTracingRenderer::findMemoryType(uint32_t typeFilter, VkMemoryPro
 }
 
 void BaseRayTracingRenderer::loadObjects(){ 
+    uint32_t meshId=0;
     for (auto& mesh: meshes)
     {
+        mesh->id = meshId++;
         bufferManager.createMeshVertexBuffer(mesh);
         bufferManager.createMeshIndexBuffer(mesh);
     }

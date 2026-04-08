@@ -43,8 +43,6 @@ private:
     };
     std::vector<MeshInstance> meshInstances;
 
-
-
     // Core variables
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
