@@ -2,13 +2,13 @@
 
 #include <vulkan/vulkan.h>
 
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE 
+// #define GLM_FORCE_DEPTH_ZERO_TO_ONE 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/euler_angles.hpp>
 
 #include <vector>
-
 
 struct Vertex {
     glm::vec3 pos;
@@ -84,6 +84,87 @@ struct PointLight{
     alignas(16) glm::vec3 pos;
     alignas(16) glm::vec3 color;
     alignas(4) float intensity;
+};
+
+struct Camera{
+    alignas(16) glm::vec3 pos;
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 project;
+};
+
+class UniformBuffer{
+public:
+    std::vector<VkBuffer> buffer;
+    std::vector<VkDeviceMemory> bufferMemory;
+    std::vector<void*> bufferMapped;
+};
+
+class StorageBuffer{
+public:
+    std::vector<VkBuffer> buffer;
+    std::vector<VkDeviceMemory> bufferMemory;
+    std::vector<void*> bufferMapped;
+};
+
+struct CameraParameters{
+    glm::vec3 position=glm::vec3(0.0f);
+    glm::vec3 direction=glm::vec3(0.0f, 0.0f, -1.0f);
+    glm::vec3 pitchYawRoll=glm::vec3(0.0f); // radians
+    float fov=glm::radians(45.0f);
+    float aspectRatio=1.0f;
+    float nearPlane=0.1f;   
+    float farPlane=100.0f;
+
+    Camera getCamera() const {
+        Camera cam;
+        cam.pos = position;
+        glm::mat4 rotation = glm::yawPitchRoll(pitchYawRoll.y, pitchYawRoll.x, pitchYawRoll.z);
+        cam.view = glm::lookAtLH(position, position + glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f)) * rotation;
+        cam.project = glm::perspectiveLH(fov, aspectRatio, nearPlane, farPlane);
+        return cam;
+    }
+};
+
+class CameraInstance{
+public:
+    Camera data;
+    UniformBuffer uniformBuffer;
+};
+
+struct GlobalInfo{
+    alignas(16) glm::vec2 windowSize;
+    alignas(16) glm::vec3 backgroundColor;
+    alignas(4) int scale;
+};
+
+class GlobalInfoInstance{
+public:
+    GlobalInfo data;
+    UniformBuffer uniformBuffer;
+};
+
+struct Timer{
+    float time;
+
+    void update(){
+        static auto startTime = std::chrono::high_resolution_clock::now();
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+        time = deltaTime;
+    }
+};
+
+class TimerInstance{
+public:
+    Timer data;
+    UniformBuffer uniformBuffer;
+};
+
+class PointLightInstance{
+public:
+    PointLight data;
+    UniformBuffer uniformBuffer;
 };
 
 class Mesh{

@@ -15,7 +15,7 @@ layout(binding = 2,set=0,scalar) buffer InstanceInfo_ {
     InstanceInfo infos[];
 } info_;
 
-layout(binding=3,set=1) uniform Light_{
+layout(binding=2,set=1) uniform Light_{
     vec3 pos;
     vec3 color;
     float intensity;
@@ -64,8 +64,11 @@ void main() {
     );
 
     payload.color = max(dot(L, normal), 0) * light.color * light.intensity / L_D / L_D;
+    // payload.color = vec3(1.0f, 1.0f, 1.0f);
 
     if (isShadow) {
         payload.color *= 0.3f;
+        // payload.color = vec3(1.0f, 1.0f, 1.0f);
     }    
+
 }

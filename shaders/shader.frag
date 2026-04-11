@@ -19,6 +19,7 @@ void main(){
 
 
     color = vec4(diffuse*10.3, 1.0);
+    color.r += 0.5 * sin(ubo.time);
     // color = vec4(fragWorldPos, 1.0);
     // color = vec4(fragNorm, 1.0);
     // color = vec4(vec3(fragDepth-4.0), 1.0);

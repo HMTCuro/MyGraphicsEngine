@@ -7,6 +7,11 @@
 
 #include "basicObjects.h"
 
+struct InstanceAddressInfo{
+    uint64_t  vertexBufferAddress;
+    uint64_t  indexBufferAddress;
+};
+
 struct ScratchBuffer
 {
 	uint64_t       deviceAddress;
@@ -23,7 +28,10 @@ public:
     VkInstance instance= VK_NULL_HANDLE;
     VkCommandPool commandPool= VK_NULL_HANDLE;
     VkQueue graphicsQueue= VK_NULL_HANDLE;
+    uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 };
+
+
 
 class BufferManager{
 public:
@@ -111,6 +119,21 @@ public:
         vkDeviceWaitIdle(pCtx->device);
     }
 
+    void createStorageBuffer(VkDeviceSize bufferSize, StorageBuffer& StorageBuffer, void* data){
+        StorageBuffer.buffer.resize(pCtx->MAX_FRAMES_IN_FLIGHT);
+        StorageBuffer.bufferMemory.resize(pCtx->MAX_FRAMES_IN_FLIGHT);
+        StorageBuffer.bufferMapped.resize(pCtx->MAX_FRAMES_IN_FLIGHT);
+
+        for (size_t i = 0; i < pCtx->MAX_FRAMES_IN_FLIGHT; i++) {
+            createBuffer(bufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, StorageBuffer.buffer[i], StorageBuffer.bufferMemory[i]);
+
+            void* mappedData;
+            vkMapMemory(pCtx->device, StorageBuffer.bufferMemory[i], 0, bufferSize, 0, &mappedData);
+            memcpy(mappedData, data, bufferSize);
+            vkUnmapMemory(pCtx->device, StorageBuffer.bufferMemory[i]);
+        }
+    }
+
     void createMeshVertexBuffer(Mesh* object) { 
         VkDeviceSize bufferSize = sizeof(object->vertices[0]) * object->vertices.size();
 
@@ -123,7 +146,11 @@ public:
         vkMapMemory(pCtx->device, stagingBufferMemory, 0, bufferSize, 0, &data);
             memcpy(data, object->vertices.data(), (size_t) bufferSize);
         vkUnmapMemory(pCtx->device, stagingBufferMemory);
-        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, object->vertexBuffer, object->vertexBufferMemory);
+        createBuffer(
+            bufferSize, 
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, 
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            object->vertexBuffer, object->vertexBufferMemory);
 
         copyBuffer(stagingBuffer, object->vertexBuffer, bufferSize);
         vkDestroyBuffer(pCtx->device, stagingBuffer, nullptr);
@@ -152,6 +179,37 @@ public:
 
     }
    
+    void createUniformBuffers(VkDeviceSize bufferSize, UniformBuffer& uniformBuffer) {
+        uniformBuffer.buffer.resize(pCtx->MAX_FRAMES_IN_FLIGHT);
+        uniformBuffer.bufferMemory.resize(pCtx->MAX_FRAMES_IN_FLIGHT);
+        uniformBuffer.bufferMapped.resize(pCtx->MAX_FRAMES_IN_FLIGHT);
+
+        for (size_t i = 0; i < pCtx->MAX_FRAMES_IN_FLIGHT; i++) {
+            createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffer.buffer[i], uniformBuffer.bufferMemory[i]);
+
+            vkMapMemory(pCtx->device, uniformBuffer.bufferMemory[i], 0, bufferSize, 0, &uniformBuffer.bufferMapped[i]);
+        }
+    }
+
+    void updateUniformBuffer(uint32_t currentImage, UniformBuffer& uniformBuffer, void* data, size_t dataSize) {
+        memcpy(uniformBuffer.bufferMapped[currentImage], data, dataSize);
+    }
+
+    void destroyUniformBuffers(UniformBuffer& uniformBuffer) {
+        for (size_t i = 0; i < pCtx->MAX_FRAMES_IN_FLIGHT; i++) {
+            vkUnmapMemory(pCtx->device, uniformBuffer.bufferMemory[i]);
+            vkDestroyBuffer(pCtx->device, uniformBuffer.buffer[i], nullptr);
+            vkFreeMemory(pCtx->device, uniformBuffer.bufferMemory[i], nullptr);
+        }
+    }
+
+    void destroyStorageBuffers(StorageBuffer& storageBuffer) {
+        for (size_t i = 0; i < pCtx->MAX_FRAMES_IN_FLIGHT; i++) {
+            vkDestroyBuffer(pCtx->device, storageBuffer.buffer[i], nullptr);
+            vkFreeMemory(pCtx->device, storageBuffer.bufferMemory[i], nullptr);
+        }
+    }
+
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties){
         VkPhysicalDeviceMemoryProperties memProperties;
         vkGetPhysicalDeviceMemoryProperties(pCtx->physicalDevice, &memProperties);

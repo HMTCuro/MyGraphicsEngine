@@ -6,7 +6,7 @@
 #include "rayTracingUtils.glsl"
 
 layout (binding = 0, set = 0) uniform accelerationStructureEXT tlas;
-layout (binding = 1, set = 0, rgba32f) uniform image2D image;
+layout (binding = 1, set = 0, rgba16f) uniform image2D image;
 
 layout (binding = 0, set = 1) uniform G {
     vec2 window_size;
@@ -25,6 +25,7 @@ layout(location = 0) rayPayloadEXT RayPayload prd;
 void main() {
     vec2 stride = vec2(1.0f / (g.scale + 1.0f));
     vec3 hit_value = vec3(0.0f);
+    vec3 view_direction_debug = vec3(0.0f);
     for (int i = 0; i < g.scale; i ++) {
         vec2 center = vec2(gl_LaunchIDEXT.xy) + stride * (i + 1.0f);
         vec2 uv = center / gl_LaunchSizeEXT.xy;
@@ -33,23 +34,25 @@ void main() {
 
         uint ray_flags = gl_RayFlagsOpaqueEXT;
         prd.color = g.clear_color;
+        // prd.color = vec3(1.0f, 1.0f, 1.0f);
 
         traceRayEXT(
-            tlas,
-            ray_flags,
-            0xff,
-            0, 0,
-            0,
-            camera.pos,
-            0.001,
-            view_direction,
-            10000.0,
+            tlas, // Acceleration structure
+            ray_flags, // Ray tracing flags
+            0xff, // Cull mask (which geometry to consider)
+            0, 0, // SBT offsets and strides (for shader binding table)
+            0, // Miss shader index (if no hit, which miss shader to execute)
+            camera.pos, // Ray origin
+            0.001, // Minimum ray distance (to avoid self-intersection)
+            view_direction, // Ray direction
+            10000.0, // Maximum ray distance
             0
         );
-
+        // prd.color = vec3(1.0f, 1.0f, 1.0f);
         hit_value += prd.color;
+        view_direction_debug = view_direction;
     }
-    
+    // imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(view_direction_debug / g.scale, 1.0));
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hit_value / g.scale, 1.0));
 }
 // void main() {

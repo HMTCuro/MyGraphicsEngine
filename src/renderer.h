@@ -55,9 +55,9 @@ struct MinimumUBO{
     float time;
 
     void update(){
-        static auto startTime = std::chrono::high_resolution_clock::now();
+        static auto startTime1 = std::chrono::high_resolution_clock::now();
         auto currentTime = std::chrono::high_resolution_clock::now();
-        float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+        float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime1).count();
 
         time = deltaTime;
     }

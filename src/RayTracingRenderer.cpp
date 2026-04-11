@@ -16,27 +16,32 @@ void BaseRayTracingRenderer::initVulkan() {
     createSwapChain();
     createImageViews();
     createRenderPass();
-    createDescriptorSetLayout(); // For all descriptor sets
-    createGraphicsPipeline(); // For all graphics pipelines
     createCommandPool();
     initContextAndManager();
+    createDescriptorSetLayout(); // For all descriptor sets
+    createGraphicsPipeline(); // For all graphics pipelines
+    
+    
     createColorResources();
     createDepthResources();
+    createRTOutResources();
     createFramebuffers();
     //     createTextureImage();
     //     createTextureImageView();
-    //     createTextureSampler();
+    createTextureSampler();
     loadObjects();
     createAccelerationStructures();
-
-    // createRayTracingDescriptorSetLayout();
-    // createRayTracingDescriptorPool();
-    // createRayTracingDescriptorSets();
-    // createRayTracingPipeline();
-
-    createUniformBuffers<MinimumUBO>();
+  
+    createUniformBuffers();
     createDescriptorPool();
     createDescriptorSets();
+
+    createRayTracingDescriptorPool();
+    createRayTracingDescriptorSets();
+
+    createSamplerDescriptorPool();
+    createSamplerDescriptorSets();
+
     createCommandBuffers();
     createSyncObjects();
     std::cout << "Vulkan Initialized" << std::endl;
@@ -55,7 +60,13 @@ void BaseRayTracingRenderer::drawFrame() {
         throw std::runtime_error("failed to acquire swap chain image!");
     }
 
-    updateUniformBuffer<MinimumUBO>(currentFrame);
+    // updateUniformBuffer<MinimumUBO>(currentFrame);
+    timer.data.update();
+    bufferManager.updateUniformBuffer(currentFrame, timer.uniformBuffer, &timer.data, sizeof(timer.data));
+    bufferManager.updateUniformBuffer(currentFrame, camera.uniformBuffer, &camera.data, sizeof(camera.data));
+    bufferManager.updateUniformBuffer(currentFrame, pointLight.uniformBuffer, &pointLightData, sizeof(pointLightData));
+    bufferManager.updateUniformBuffer(currentFrame, globalInfo.uniformBuffer, &globalInfoData, sizeof(globalInfoData));
+    
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
@@ -113,11 +124,20 @@ void BaseRayTracingRenderer::cleanupVulkan() {
     }
 
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-    for(size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        vkUnmapMemory(device, uniformBuffersMemory[i]);
-        vkDestroyBuffer(device, uniformBuffers[i], nullptr);
-        vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
+    if(rayTracingDescriptorPool!= VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(device, rayTracingDescriptorPool, nullptr);
     }
+    if(samplerDescriptorPool != VK_NULL_HANDLE){
+        vkDestroyDescriptorPool(device, samplerDescriptorPool, nullptr);
+    }
+
+    bufferManager.destroyUniformBuffers(timer.uniformBuffer);
+    bufferManager.destroyUniformBuffers(pointLight.uniformBuffer);
+    bufferManager.destroyUniformBuffers(globalInfo.uniformBuffer);
+    bufferManager.destroyUniformBuffers(camera.uniformBuffer);
+
+    bufferManager.destroyStorageBuffers(instanceInfoBuffer);
+
 
     for(auto& mesh: meshes){
         vkDestroyBuffer(device, mesh->vertexBuffer, nullptr);
@@ -137,13 +157,18 @@ void BaseRayTracingRenderer::cleanupVulkan() {
     vkDestroyCommandPool(device, commandPool, nullptr);
     whiteModelPipeline.destroyPipeline();
     whiteModelDescriptorSetLayoutBundle.destroyDescriptorSetLayout();
-    // vkDestroyPipeline(device, graphicsPipeline, nullptr);
-    // vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-    // vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
-    // vkDestroyPipeline(device, rayTracingPipeline, nullptr);
-    // vkDestroyPipelineLayout(device, rayTracingPipelineLayout, nullptr);
-    // vkDestroyDescriptorSetLayout(device, rayTracingDescriptorSetLayout, nullptr);
+    vkUnmapMemory(device, rayTracingPipeline.sbtBufferMemory);
+    vkDestroyBuffer(device, rayTracingPipeline.sbtBuffer, nullptr);
+    vkFreeMemory(device, rayTracingPipeline.sbtBufferMemory, nullptr);
+    
+    rayTracingPipeline.destroyPipeline();
+    rayTracingDescriptorSetLayoutBundle.destroyDescriptorSetLayout();
+
+    samplerPipeline.destroyPipeline();
+    samplerDescriptorSetLayoutBundle.destroyDescriptorSetLayout();
+
+    vkDestroySampler(device, textureSampler, nullptr);
 
     vkDestroyRenderPass(device, renderPass, nullptr);
     vkDestroyDevice(device, nullptr);
@@ -163,7 +188,6 @@ void BaseRayTracingRenderer::cleanupVulkan() {
 
 void BaseRayTracingRenderer::setFramebufferResizeCallback(){
     glfwSetFramebufferSizeCallback(window,framebufferResizedCallback);
-
 }
 
 void BaseRayTracingRenderer::createInstance(){
@@ -276,16 +300,18 @@ void BaseRayTracingRenderer::pickPhysicalDevice(){
     rayTracingPipelineFeatures.pNext = &accelerationStructureFeatures;
 
     accelerationStructureFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-    accelerationStructureFeatures.pNext = &bufferDeviceAddressFeatures;
+    accelerationStructureFeatures.pNext = &scalarBlockLayoutFeatures;
+
+    scalarBlockLayoutFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT;
+    scalarBlockLayoutFeatures.pNext = &bufferDeviceAddressFeatures;
 
     bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR;
     bufferDeviceAddressFeatures.pNext = nullptr;
-
-
-    VkPhysicalDeviceFeatures2 features2;
-    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    features2.pNext = &rayTracingPipelineFeatures;
-    vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
+    
+    deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    deviceFeatures2.pNext = &rayTracingPipelineFeatures;
+    deviceFeatures2.features.shaderInt64 = VK_TRUE; // Example of enabling an additional feature if needed
+    vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures2);
     if (!rayTracingPipelineFeatures.rayTracingPipeline) {
         throw std::runtime_error("Ray tracing pipeline feature is not supported!");
     }
@@ -329,9 +355,8 @@ void BaseRayTracingRenderer::createLogicalDevice(){
 
     bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
     accelerationStructureFeatures.accelerationStructure = VK_TRUE;
+    // accelerationStructureFeatures.accelerationStructureHostCommands = VK_TRUE;
     rayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
-
-    VkPhysicalDeviceFeatures deviceFeatures{};
 
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -356,7 +381,7 @@ void BaseRayTracingRenderer::createLogicalDevice(){
     // }
     // bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE; 
 
-    createInfo.pNext = &rayTracingPipelineFeatures;
+    createInfo.pNext = &deviceFeatures2;
 
 
     VkResult result = vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
@@ -423,7 +448,7 @@ void BaseRayTracingRenderer::createSwapChain(){
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = extent;
     createInfo.imageArrayLayers = 1;
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT| VK_IMAGE_USAGE_TRANSFER_DST_BIT; 
     if(indices.graphicsFamily != indices.presentFamily){
         createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         createInfo.queueFamilyIndexCount = 2;
@@ -472,6 +497,7 @@ void BaseRayTracingRenderer::recreateSwapChain(){
 void BaseRayTracingRenderer::waitIdle(){
     vkDeviceWaitIdle(device);
 }
+
 void BaseRayTracingRenderer::createImageViews(){
     swapChainImageViews.resize(swapChainImages.size());
     for(size_t i=0;i<swapChainImages.size();i++){
@@ -544,260 +570,15 @@ void BaseRayTracingRenderer::createRenderPass(){
 }
 
 void BaseRayTracingRenderer::createDescriptorSetLayout(){
-   whiteModelDescriptorSetLayoutBundle.setProperties(device);
-   whiteModelDescriptorSetLayoutBundle.createDescriptorSetLayout();
+    whiteModelDescriptorSetLayoutBundle.setProperties(device);
+    whiteModelDescriptorSetLayoutBundle.createDescriptorSetLayout();
+
+    rayTracingDescriptorSetLayoutBundle.setProperties(device);
+    rayTracingDescriptorSetLayoutBundle.createDescriptorSetLayout();
+
+    samplerDescriptorSetLayoutBundle.setProperties(device);
+    samplerDescriptorSetLayoutBundle.createDescriptorSetLayout();
 }
-
-void BaseRayTracingRenderer::createRayTracingDescriptorSetLayout(){
-    /***
-     * rgen:
-    layout (binding = 0, set = 0) uniform accelerationStructureEXT tlas;
-    layout (binding = 1, set = 0, rgba32f) uniform image2D image;
-    layout (binding = 0, set = 1) uniform G {
-        vec2 window_size;
-        vec3 clear_color;
-        int scale;
-    } g;
-    layout(binding = 1, set = 1) uniform CameraUniform {
-        vec3 pos;
-        mat4 view;
-        mat4 project;
-    } camera;
-    layout(location = 0) rayPayloadEXT RayPayload prd;
-    
-    *rchit:
-    layout(binding = 0, set = 0) uniform accelerationStructureEXT tlas;
-    layout(location = 0) rayPayloadInEXT RayPayload payload;
-    layout(location = 1) rayPayloadEXT bool isShadow;
-    layout(binding = 2,set=0,scalar) buffer InstanceInfo_ {
-    InstanceInfo infos[];
-    } info_;
-    layout(binding=3,set=1) uniform Light_{
-    vec3 pos;
-    vec3 color;
-    float intensity;
-    } light;
-
-    *rmiss:
-    layout(location = 1) rayPayloadInEXT bool isShadow;
-    ***/
-
-    // TLAS and output image bindings for ray tracing shaders
-    VkDescriptorSetLayoutBinding tlasBinding{};
-    tlasBinding.binding = 0;
-    tlasBinding.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-    tlasBinding.descriptorCount = 1;
-    tlasBinding.stageFlags = VK_SHADER_STAGE_ALL;
-    VkDescriptorSetLayoutBinding outImageBinding{};
-    outImageBinding.binding = 1;
-    outImageBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    outImageBinding.descriptorCount = 1;
-    outImageBinding.stageFlags = VK_SHADER_STAGE_ALL;
-
-
-    std::array<VkDescriptorSetLayoutBinding, 2> bindings = {tlasBinding, outImageBinding};
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-    layoutInfo.pBindings = bindings.data();
-
-    VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &rayTracingDescriptorSetLayout);
-    if(result != VK_SUCCESS){
-        throw std::runtime_error("failed to create ray tracing descriptor set layout!");
-    }
-
-    rayTracingDescriptorSetLayouts.push_back(rayTracingDescriptorSetLayout);
-
-    // UBO bindings for camera and global parameters
-    VkDescriptorSetLayoutBinding glfwBinding{};
-    glfwBinding.binding = 0;
-    glfwBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    glfwBinding.descriptorCount = 1;
-    glfwBinding.stageFlags = VK_SHADER_STAGE_ALL;
-
-
-
-}
-
-void BaseRayTracingRenderer::createAccelerationStructure(
-    VkAccelerationStructureTypeKHR asType,
-    AccelerationStructure& accelerationStructure,
-    VkAccelerationStructureGeometryKHR& asGeometry,
-    VkAccelerationStructureBuildRangeInfoKHR& asBuildRangeInfo,
-    VkBuildAccelerationStructureFlagsKHR flags
-) {
-    VkResult result;
-    // 动态获取KHR扩展函数指针
-    auto fpCreateAccelerationStructureKHR = (PFN_vkCreateAccelerationStructureKHR)vkGetDeviceProcAddr(device, "vkCreateAccelerationStructureKHR");
-    auto fpCmdBuildAccelerationStructuresKHR = (PFN_vkCmdBuildAccelerationStructuresKHR)vkGetDeviceProcAddr(device, "vkCmdBuildAccelerationStructuresKHR");
-    auto fpGetAccelerationStructureDeviceAddressKHR = (PFN_vkGetAccelerationStructureDeviceAddressKHR)vkGetDeviceProcAddr(device, "vkGetAccelerationStructureDeviceAddressKHR");
-    auto fpGetAccelerationStructureBuildSizesKHR = (PFN_vkGetAccelerationStructureBuildSizesKHR)vkGetDeviceProcAddr(device, "vkGetAccelerationStructureBuildSizesKHR");
-
-    VkAccelerationStructureBuildGeometryInfoKHR buildGeometryInfo = {};
-    buildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
-    buildGeometryInfo.type = asType;
-    buildGeometryInfo.flags = flags;
-    buildGeometryInfo.geometryCount = 1;
-    buildGeometryInfo.pGeometries = &asGeometry;
-
-    VkAccelerationStructureBuildSizesInfoKHR buildSizesInfo = {};
-    buildSizesInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
-    fpGetAccelerationStructureBuildSizesKHR(device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &buildGeometryInfo, &asBuildRangeInfo.primitiveCount, &buildSizesInfo);
-
-    bufferManager.createBuffer(
-        buildSizesInfo.accelerationStructureSize,
-        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        accelerationStructure.buffer,
-        accelerationStructure.memory
-    );
-    std::cout<< "Acceleration Structure Buffer Created: Size = " << buildSizesInfo.accelerationStructureSize << " bytes" << std::endl;
-
-    VkAccelerationStructureCreateInfoKHR createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-    createInfo.buffer = accelerationStructure.buffer;
-    createInfo.size = buildSizesInfo.accelerationStructureSize;
-    createInfo.type = asType;
-    result = fpCreateAccelerationStructureKHR(device, &createInfo, nullptr, &accelerationStructure.handle);
-    if(result != VK_SUCCESS){
-        throw std::runtime_error("failed to create acceleration structure!");
-    }
-    std::cout << "Acceleration Structure Created Successfully!" << std::endl;
-
-    // Scratch buffer
-    ScratchBuffer scratchBuffer;
-    bufferManager.createBuffer(
-        buildSizesInfo.buildScratchSize,
-        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR|
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        scratchBuffer.handle,
-        scratchBuffer.memory
-    );
-    scratchBuffer.deviceAddress = getBufferDeviceAddress(scratchBuffer.handle);
-
-    buildGeometryInfo.dstAccelerationStructure = accelerationStructure.handle;
-    buildGeometryInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
-    buildGeometryInfo.scratchData.deviceAddress = scratchBuffer.deviceAddress;
-
-    VkCommandBuffer commandBuffer = bufferManager.beginSingleTimeCommands();
-    const VkAccelerationStructureBuildRangeInfoKHR* rangeInfoPtr = &asBuildRangeInfo;
-    // result = fpBuildAccelerationStructuresKHR(device, nullptr, 1, &buildGeometryInfo, &rangeInfoPtr);
-    fpCmdBuildAccelerationStructuresKHR(commandBuffer, 1, &buildGeometryInfo, &rangeInfoPtr);
-    bufferManager.endSingleTimeCommands(commandBuffer);
-
-    VkAccelerationStructureDeviceAddressInfoKHR asAddressInfo{};
-    asAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
-    asAddressInfo.accelerationStructure = accelerationStructure.handle;
-    accelerationStructure.deviceAddress = fpGetAccelerationStructureDeviceAddressKHR(device, &asAddressInfo);
-
-    vkDestroyBuffer(device, scratchBuffer.handle, nullptr);
-    vkFreeMemory(device, scratchBuffer.memory, nullptr);
-
-}
-
-// void BaseRayTracingRenderer::createBLAS(){
-//     std::cout << "--------Creating BLAS---------" << std::endl;
-
-//     VkResult result;
-
-//     // Bottom-level acceleration structure
-//     VkAccelerationStructureGeometryKHR geometry{};
-//     geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-//     geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-//     geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
-//     geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
-//     geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-//     geometry.geometry.triangles.vertexData.deviceAddress = getBufferDeviceAddress(vertexBuffer);
-//     geometry.geometry.triangles.vertexStride = sizeof(Vertex);
-//     geometry.geometry.triangles.maxVertex = static_cast<uint32_t>(vertices.size());
-//     geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
-//     geometry.geometry.triangles.indexData.deviceAddress = getBufferDeviceAddress(indexBuffer);
-
-//     VkAccelerationStructureBuildRangeInfoKHR rangeInfo = {};
-//     rangeInfo.primitiveCount = indices.size() / 3;
-//     rangeInfo.primitiveOffset = 0;
-//     rangeInfo.firstVertex = 0;
-//     rangeInfo.transformOffset = 0;
-
-//     createAccelerationStructure(
-//         VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-//         blas,
-//         geometry,
-//         rangeInfo,
-//         VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
-//     );
-// }
-
-// void BaseRayTracingRenderer::createTLAS(){
-//     std::cout << "--------Creating TLAS---------" << std::endl;
-
-//     VkResult result;
-
-//     auto toTransformMatrixKHR = [](const glm::mat4& m) {
-//         VkTransformMatrixKHR t;
-//         memcpy(&t, glm::value_ptr(glm::transpose(m)), sizeof(t));
-//         return t;
-//     };
-
-//     std::vector<VkAccelerationStructureInstanceKHR> instances;
-    
-//     VkAccelerationStructureInstanceKHR instance{};
-//     instance.transform = toTransformMatrixKHR(glm::mat4(1.0f)); // Identity
-//     instance.instanceCustomIndex = 0;
-//     instance.mask = 0xFF;
-//     instance.accelerationStructureReference = blas.deviceAddress;
-//     instance.instanceShaderBindingTableRecordOffset = 0; 
-//     instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-//     instances.push_back(instance);
-
-//     VkBuffer tlasInstanceBuffer;
-//     VkDeviceMemory tlasInstanceBufferMemory;
-//     VkDeviceSize instanceBufferSize = instances.size() * sizeof(VkAccelerationStructureInstanceKHR);
-//     bufferManager.createBuffer(
-//         instanceBufferSize,
-//         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-//         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-//         tlasInstanceBuffer,
-//         tlasInstanceBufferMemory
-//     );
-
-//     VkBuffer stagingBuffer;
-//     VkDeviceMemory stagingBufferMemory;
-//     bufferManager.createBuffer(
-//         instanceBufferSize,
-//         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-//         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-//         stagingBuffer,
-//         stagingBufferMemory
-//     );
-//     bufferManager.copyBuffer(stagingBuffer, tlasInstanceBuffer, instanceBufferSize);
-//     vkDestroyBuffer(device, stagingBuffer, nullptr);
-//     vkFreeMemory(device, stagingBufferMemory, nullptr);
-
-
-//     // Top-level acceleration structure
-//     VkAccelerationStructureGeometryInstancesDataKHR geometryInstances{};
-//     geometryInstances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
-//     geometryInstances.data.deviceAddress = getBufferDeviceAddress(tlasInstanceBuffer);
-//     VkAccelerationStructureGeometryKHR geometry{};
-//     geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-//     geometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
-//     geometry.geometry.instances = geometryInstances;
-//     VkAccelerationStructureBuildRangeInfoKHR rangeInfo = {};
-//     rangeInfo.primitiveCount = static_cast<uint32_t>(instances.size());
-//     createAccelerationStructure(
-//         VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-//         tlas,
-//         geometry,
-//         rangeInfo,
-//         VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
-//     );
-    
-//     vkDestroyBuffer(device, tlasInstanceBuffer, nullptr);
-//     vkFreeMemory(device, tlasInstanceBufferMemory, nullptr);
-    
-// }
 
 void BaseRayTracingRenderer::createAccelerationStructures(){
     std::cout << "--------Creating Acceleration Structures (Placeholder)---------" << std::endl;
@@ -810,117 +591,39 @@ void BaseRayTracingRenderer::createAccelerationStructures(){
     }
 
     // tlas for each instance
+    std::vector<VkAccelerationStructureInstanceKHR> tlasInstances;
+    uint32_t instanceID = 0;
     for(auto &instance: meshInstances){
-        auto tmpTlas = std::make_unique<TopLevelAS>();
-        tmpTlas->init(
-            blasCollections[instance.mesh->id].get(),
-            &ctx,&bufferManager,&asManager);
-        tmpTlas->transform = instance.getModelMatrix();
-        tmpTlas->build();
-        tlasCollections.push_back(std::move(tmpTlas));
-    }
-    
-}
-
-void BaseRayTracingRenderer::createRayTracingPipeline(){ 
-    std::cout << "--------Creating Ray Tracing Pipeline---------" << std::endl;
-    VkResult result;
-    const char* rayGenShaderPath = "shaders/raygen.spv";
-    const char* missShaderPath = "shaders/miss.spv";
-    const char* hitShaderPath = "shaders/closestHit.spv";
-    std::vector<char> rayGenShaderCode = readSpvFile(rayGenShaderPath);
-    std::vector<char> missShaderCode = readSpvFile(missShaderPath);
-    std::vector<char> hitShaderCode = readSpvFile(hitShaderPath);
-    
-    VkShaderModule rayGenShaderModule = createShaderModule(rayGenShaderCode);
-    VkShaderModule missShaderModule = createShaderModule(missShaderCode);
-    VkShaderModule hitShaderModule = createShaderModule(hitShaderCode);
-
-    enum StageIndices {
-        eRaygen,
-        eMiss,
-        eClosestHit,
-        eShaderGroupCount
-    };
-
-    VkPipelineShaderStageCreateInfo rayGenShaderStageInfo{};
-    rayGenShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    rayGenShaderStageInfo.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-    rayGenShaderStageInfo.module = rayGenShaderModule;
-    rayGenShaderStageInfo.pName = "main";
-
-    VkPipelineShaderStageCreateInfo missShaderStageInfo{};
-    missShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    missShaderStageInfo.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
-    missShaderStageInfo.module = missShaderModule;
-    missShaderStageInfo.pName = "main";
-
-    VkPipelineShaderStageCreateInfo hitShaderStageInfo{};
-    hitShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    hitShaderStageInfo.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-    hitShaderStageInfo.module = hitShaderModule;
-    hitShaderStageInfo.pName = "main";
-
-    std::array<VkPipelineShaderStageCreateInfo, eShaderGroupCount> shaderStages = { rayGenShaderStageInfo, missShaderStageInfo, hitShaderStageInfo };
-
-    VkRayTracingShaderGroupCreateInfoKHR group{};
-    group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-    group.anyHitShader = VK_SHADER_UNUSED_KHR;
-    group.closestHitShader = VK_SHADER_UNUSED_KHR;
-    group.generalShader = VK_SHADER_UNUSED_KHR;
-    group.intersectionShader = VK_SHADER_UNUSED_KHR;
-
-    std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups;
-
-    group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-    group.generalShader = eRaygen;
-    shaderGroups.push_back(group);
-
-    group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-    group.generalShader = eMiss;
-    shaderGroups.push_back(group);
-
-    group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
-    group.closestHitShader = eClosestHit;
-    group.generalShader = VK_SHADER_UNUSED_KHR;
-    shaderGroups.push_back(group);
-
-    std::array<VkDescriptorSetLayout,2> descriptorSetLayouts = {
-        rayTracingDescriptorSetLayout,rayTracingDescriptorSetLayout};
-
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size());
-    pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
-    result = vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &rayTracingPipelineLayout);
-    if(result != VK_SUCCESS){
-        throw std::runtime_error("failed to create pipeline layout!");
+        // Create TLAS instance for each mesh instance
+        AccelerationStructure handle = blasCollections[instance.mesh->id].get()->getHandle();
+        VkAccelerationStructureInstanceKHR tlasInstance = asManager.createTLASInstance(
+            instance.getModelMatrix(),
+            instanceID++,
+            0xFF,
+            0,
+            VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
+            handle
+        );
+        tlasInstances.push_back(tlasInstance);
     }
 
-    VkRayTracingPipelineCreateInfoKHR rtPipelineInfo{};
-    rtPipelineInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
-    rtPipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
-    rtPipelineInfo.pStages = shaderStages.data();
-    rtPipelineInfo.groupCount = static_cast<uint32_t>(shaderGroups.size());
-    rtPipelineInfo.pGroups = shaderGroups.data();
-    rtPipelineInfo.layout = rayTracingPipelineLayout;
-    rtPipelineInfo.maxPipelineRayRecursionDepth = 1;
-
-    auto fpCreateRayTracingPipelinesKHR = (PFN_vkCreateRayTracingPipelinesKHR)vkGetDeviceProcAddr(device, "vkCreateRayTracingPipelinesKHR");
-    result = fpCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rtPipelineInfo, nullptr, &rayTracingPipeline);
-    if(result != VK_SUCCESS){
-        throw std::runtime_error("failed to create ray tracing pipeline!");
-    }
-
-    vkDestroyShaderModule(device, rayGenShaderModule, nullptr);
-    vkDestroyShaderModule(device, missShaderModule, nullptr);
-    vkDestroyShaderModule(device, hitShaderModule, nullptr);
+    auto tmpTlas = std::make_unique<TopLevelAS>();
+    tmpTlas->init(&ctx,&bufferManager,&asManager);
+    tmpTlas->build(tlasInstances);
+    tlasCollections.push_back(std::move(tmpTlas));
 }
 
 void BaseRayTracingRenderer::createGraphicsPipeline(){
     std::cout << "--------Creating Graphics Pipeline---------" << std::endl;
-    whiteModelPipeline.setProperties(device, renderPass, whiteModelDescriptorSetLayoutBundle.getHandle());
+    std::cout << "--------Creating White Model Pipeline---------" << std::endl;
+    whiteModelPipeline.setProperties(&ctx, renderPass, whiteModelDescriptorSetLayoutBundle.getHandle(), &bufferManager);
     whiteModelPipeline.createPipeline();
+    std::cout << "--------Creating Ray Tracing Pipeline---------" << std::endl;
+    rayTracingPipeline.setProperties(&ctx, renderPass, rayTracingDescriptorSetLayoutBundle.getHandle(), &bufferManager);
+    rayTracingPipeline.createPipeline();
+
+    samplerPipeline.setProperties(&ctx, renderPass, samplerDescriptorSetLayoutBundle.getHandle(), &bufferManager);
+    samplerPipeline.createPipeline();
 }
 
 void BaseRayTracingRenderer::createCommandPool(){
@@ -951,6 +654,30 @@ void BaseRayTracingRenderer::createDepthResources(){
     depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 }
 
+void BaseRayTracingRenderer::createRTOutResources(){
+    VkFormat rtOutFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+    VkImageUsageFlags usageFlags = 
+        VK_IMAGE_USAGE_STORAGE_BIT |          // 光线追踪写入
+        VK_IMAGE_USAGE_SAMPLED_BIT |          // 供后续着色器采样
+        VK_IMAGE_USAGE_TRANSFER_SRC_BIT |     // 拷贝到swapchain
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT;      // 如果需要清理图像
+
+    createImage(
+        swapChainExtent.width, 
+        swapChainExtent.height, 
+        1, 
+        VK_SAMPLE_COUNT_1_BIT, 
+        rtOutFormat, 
+        VK_IMAGE_TILING_OPTIMAL, 
+        usageFlags, 
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
+        outputImage, 
+        outputImageMemory);
+    outputImageView = createImageView(outputImage, rtOutFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+
+}
+
 void BaseRayTracingRenderer::createFramebuffers(){
     swapChainFramebuffers.resize(swapChainImageViews.size());
     VkResult result;
@@ -975,10 +702,34 @@ void BaseRayTracingRenderer::createFramebuffers(){
     }
 }
 
+void BaseRayTracingRenderer::createTextureSampler(){
+    VkSamplerCreateInfo samplerInfo{};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.magFilter = VK_FILTER_LINEAR;
+    samplerInfo.minFilter = VK_FILTER_LINEAR;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.anisotropyEnable = VK_TRUE;
+    samplerInfo.maxAnisotropy = 16.0f;
+    samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+    samplerInfo.compareEnable = VK_FALSE;
+    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+    VkResult result = vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler);
+    if(result != VK_SUCCESS){
+        throw std::runtime_error("failed to create texture sampler!");
+    }
+}
+
 void BaseRayTracingRenderer::createDescriptorPool(){
-    std::array<VkDescriptorPoolSize,1> poolSizes{};
+    std::array<VkDescriptorPoolSize,2> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -994,25 +745,46 @@ void BaseRayTracingRenderer::createDescriptorPool(){
 }
 
 void BaseRayTracingRenderer::createRayTracingDescriptorPool(){
-    std::array<VkDescriptorPoolSize,3> poolSizes{};
+    // set0: tlas, storage image, instance info buffer
+    // set1: global uniform, camera uniform, light uniform
+    std::array<VkDescriptorPoolSize, 4> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-    poolSizes[0].descriptorCount = 1;
+    poolSizes[0].descriptorCount = 1; // set0 binding0
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    poolSizes[1].descriptorCount = 1;
-    poolSizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[2].descriptorCount = 2;
+    poolSizes[1].descriptorCount = 1; // set0 binding1
+    poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    poolSizes[2].descriptorCount = 1; // set0 binding2
+    poolSizes[3].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSizes[3].descriptorCount = 3; // set1 binding0/1/2
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = 2;
+    poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT*2; // set0 + set1
 
     VkResult result = vkCreateDescriptorPool(device, &poolInfo, nullptr, &rayTracingDescriptorPool);
     if(result != VK_SUCCESS){
         throw std::runtime_error("failed to create ray tracing descriptor pool!");
     }
 
+}
+
+void BaseRayTracingRenderer::createSamplerDescriptorPool(){
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    VkResult result = vkCreateDescriptorPool(device, &poolInfo, nullptr, &samplerDescriptorPool);
+    if(result != VK_SUCCESS){
+        throw std::runtime_error("failed to create sampler descriptor pool!");
+    }
 }
 
 void BaseRayTracingRenderer::createDescriptorSets(){
@@ -1038,10 +810,20 @@ void BaseRayTracingRenderer::createDescriptorSets(){
     }
 
     for(size_t i=0;i<MAX_FRAMES_IN_FLIGHT;i++){
+        // VkDescriptorBufferInfo bufferInfo{};
+        // bufferInfo.buffer = uniformBuffers[i];
+        // bufferInfo.offset = 0;
+        // bufferInfo.range = sizeof(timer.data);
+
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = uniformBuffers[i];
+        bufferInfo.buffer = timer.uniformBuffer.buffer[i];
         bufferInfo.offset = 0;
-        bufferInfo.range = uboSize;
+        bufferInfo.range = sizeof(timer.data);
+
+        VkDescriptorBufferInfo bufferInfo1{};
+        bufferInfo1.buffer = camera.uniformBuffer.buffer[i];
+        bufferInfo1.offset = 0;
+        bufferInfo1.range = sizeof(camera.data);
 
         // if using texture
         // VkDescriptorImageInfo imageInfo{};
@@ -1049,7 +831,7 @@ void BaseRayTracingRenderer::createDescriptorSets(){
         // imageInfo.imageView = textureImageView;
         // imageInfo.sampler = textureSampler;
 
-        std::array<VkWriteDescriptorSet,1> descriptorWrites{};
+        std::array<VkWriteDescriptorSet,2> descriptorWrites{};
         descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         descriptorWrites[0].dstSet = descriptorSets[i];
         descriptorWrites[0].dstBinding = 0;
@@ -1058,38 +840,81 @@ void BaseRayTracingRenderer::createDescriptorSets(){
         descriptorWrites[0].descriptorCount = 1;
         descriptorWrites[0].pBufferInfo = &bufferInfo;
 
+        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[1].dstSet = descriptorSets[i];
+        descriptorWrites[1].dstBinding = 1;
+        descriptorWrites[1].dstArrayElement = 0;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[1].descriptorCount = 1;
+        descriptorWrites[1].pBufferInfo = &bufferInfo1;
+
         vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     }
 }
 
 void BaseRayTracingRenderer::createRayTracingDescriptorSets(){
+    std::cout << "--------Creating Ray Tracing Descriptor Sets---------" << std::endl;
     VkResult result;
-    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, rayTracingDescriptorSetLayout);
+    std::vector<VkDescriptorSetLayout> layouts;
+    layouts.reserve(MAX_FRAMES_IN_FLIGHT*rayTracingDescriptorSetLayoutBundle.getCount());
+    for(uint32_t i=0;i<MAX_FRAMES_IN_FLIGHT;i++){
+        const auto& handle = rayTracingDescriptorSetLayoutBundle.getHandle();
+        layouts.insert(layouts.end(), handle.begin(), handle.end());
+    }
+
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = rayTracingDescriptorPool;
     allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
     allocInfo.pSetLayouts = layouts.data();
 
-    rayTracingDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    rayTracingDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT*rayTracingDescriptorSetLayoutBundle.getCount());
+
     result = vkAllocateDescriptorSets(device, &allocInfo, rayTracingDescriptorSets.data());
     if(result != VK_SUCCESS){
         throw std::runtime_error("failed to allocate ray tracing descriptor sets!");
     }
-
-    for(size_t i=0;i<MAX_FRAMES_IN_FLIGHT;i++){
+    std::cout << "Ray tracing descriptor sets allocated successfully!" << std::endl;
+    for(uint32_t i=0;i<MAX_FRAMES_IN_FLIGHT;i++){
         VkWriteDescriptorSetAccelerationStructureKHR asWrite{};
         asWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
-        asWrite.accelerationStructureCount = 1;
-        asWrite.pAccelerationStructures = &tlas.handle;
+        std::vector<VkAccelerationStructureKHR> asHandles;
+        for(auto& tlas: tlasCollections){
+            asHandles.push_back(tlas->getHandle().handle);
+        }
+        asWrite.accelerationStructureCount = static_cast<uint32_t>(asHandles.size());
+        asWrite.pAccelerationStructures = asHandles.data();
+
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-        imageInfo.imageView = swapChainImageViews[i];
+        imageInfo.imageView = outputImageView;
         imageInfo.sampler = VK_NULL_HANDLE;
 
-        std::array<VkWriteDescriptorSet,2> descriptorWrites{};
+        VkDescriptorBufferInfo instanceBufferInfo{};
+        instanceBufferInfo.buffer = instanceInfoBuffer.buffer[i];
+        instanceBufferInfo.offset = 0;
+        instanceBufferInfo.range = sizeof(InstanceAddressInfo) * meshInstances.size();
+
+        VkDescriptorBufferInfo uboInfo0{};
+        uboInfo0.buffer = globalInfo.uniformBuffer.buffer[i];
+        uboInfo0.offset = 0;
+        uboInfo0.range = sizeof(globalInfo.data);
+
+        VkDescriptorBufferInfo uboInfo1{};
+        uboInfo1.buffer = camera.uniformBuffer.buffer[i];
+        uboInfo1.offset = 0;
+        uboInfo1.range = sizeof(camera.data);
+
+        VkDescriptorBufferInfo uboInfo2{};
+        uboInfo2.buffer = pointLight.uniformBuffer.buffer[i];
+        uboInfo2.offset = 0;
+        uboInfo2.range = sizeof(pointLight.data);
+
+
+        uint32_t offset = i*rayTracingDescriptorSetLayoutBundle.getCount();
+        std::array<VkWriteDescriptorSet,6> descriptorWrites{};
         descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = rayTracingDescriptorSets[i];
+        descriptorWrites[0].dstSet = rayTracingDescriptorSets[offset + 0]; // set0
         descriptorWrites[0].dstBinding = 0;
         descriptorWrites[0].dstArrayElement = 0;
         descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
@@ -1097,12 +922,84 @@ void BaseRayTracingRenderer::createRayTracingDescriptorSets(){
         descriptorWrites[0].pNext = &asWrite;
 
         descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = rayTracingDescriptorSets[i];
+        descriptorWrites[1].dstSet = rayTracingDescriptorSets[offset + 0]; 
         descriptorWrites[1].dstBinding = 1;
         descriptorWrites[1].dstArrayElement = 0;
         descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         descriptorWrites[1].descriptorCount = 1;
         descriptorWrites[1].pImageInfo = &imageInfo;
+
+        descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[2].dstSet = rayTracingDescriptorSets[offset + 0]; 
+        descriptorWrites[2].dstBinding = 2;
+        descriptorWrites[2].dstArrayElement = 0;
+        descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[2].descriptorCount = 1;
+        descriptorWrites[2].pBufferInfo = &instanceBufferInfo;
+
+        descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[3].dstSet = rayTracingDescriptorSets[offset + 1]; // set1
+        descriptorWrites[3].dstBinding = 0;
+        descriptorWrites[3].dstArrayElement = 0;
+        descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[3].descriptorCount = 1;
+        descriptorWrites[3].pBufferInfo = &uboInfo0;
+
+        descriptorWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[4].dstSet = rayTracingDescriptorSets[offset + 1];
+        descriptorWrites[4].dstBinding = 1;
+        descriptorWrites[4].dstArrayElement = 0;
+        descriptorWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[4].descriptorCount = 1;
+        descriptorWrites[4].pBufferInfo = &uboInfo1;
+
+        descriptorWrites[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[5].dstSet = rayTracingDescriptorSets[offset + 1];
+        descriptorWrites[5].dstBinding = 2;
+        descriptorWrites[5].dstArrayElement = 0;
+        descriptorWrites[5].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[5].descriptorCount = 1;
+        descriptorWrites[5].pBufferInfo = &uboInfo2;
+        std::cout << "Updating ray tracing descriptor sets for frame " << i << std::endl;
+        vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+        std::cout << "Ray tracing descriptor sets updated for frame " << i << std::endl;
+    }
+    std::cout << "Ray tracing descriptor sets created and updated successfully!" << std::endl;
+}
+
+void BaseRayTracingRenderer::createSamplerDescriptorSets(){
+    std::cout << "--------Creating Sampler Descriptor Sets---------" << std::endl;
+    VkResult result;
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, samplerDescriptorSetLayoutBundle.getHandle()[0]);
+
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = samplerDescriptorPool;
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
+    allocInfo.pSetLayouts = layouts.data();
+
+    samplerDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+
+    result = vkAllocateDescriptorSets(device, &allocInfo, samplerDescriptorSets.data());
+    if(result != VK_SUCCESS){
+        throw std::runtime_error("failed to allocate sampler descriptor sets!");
+    }
+
+    for(size_t i=0;i<MAX_FRAMES_IN_FLIGHT;i++){
+        // if using texture
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // outputImage will be sampled, so use SHADER_READ_ONLY_OPTIMAL
+        imageInfo.imageView = outputImageView;
+        imageInfo.sampler = textureSampler;
+
+        std::array<VkWriteDescriptorSet,1> descriptorWrites{};
+        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[0].dstSet = samplerDescriptorSets[i];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].dstArrayElement = 0;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].pImageInfo = &imageInfo;
 
         vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     }
@@ -1134,6 +1031,8 @@ void BaseRayTracingRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, 
         throw std::runtime_error("failed to begin recording command buffer!");
     }
 
+
+
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = renderPass;
@@ -1147,8 +1046,124 @@ void BaseRayTracingRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, 
 
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
+    
 
-    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    bool useRayTracingPipeline = true; // Set to true to use ray tracing pipeline, false for traditional rasterization
+    if(useRayTracingPipeline){
+        VkImageMemoryBarrier barrierToGeneral = {};
+        barrierToGeneral.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrierToGeneral.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrierToGeneral.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        barrierToGeneral.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrierToGeneral.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrierToGeneral.image = outputImage;
+        barrierToGeneral.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrierToGeneral.subresourceRange.baseMipLevel = 0;
+        barrierToGeneral.subresourceRange.levelCount = 1;
+        barrierToGeneral.subresourceRange.baseArrayLayer = 0;
+        barrierToGeneral.subresourceRange.layerCount = 1;
+        barrierToGeneral.srcAccessMask = 0;
+        barrierToGeneral.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+
+        vkCmdPipelineBarrier(
+            commandBuffer,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrierToGeneral
+        );
+
+
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rayTracingPipeline.getHandle());
+
+        // 绑定描述符集
+        uint32_t setCount = rayTracingDescriptorSetLayoutBundle.getCount();
+        uint32_t offset = currentFrame * setCount;
+        vkCmdBindDescriptorSets(
+            commandBuffer,
+            VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+            rayTracingPipeline.getLayout(),
+            0,
+            setCount,
+            &rayTracingDescriptorSets[offset],
+            0,
+            nullptr
+        );
+
+        // 推送常量（如有）
+        // vkCmdPushConstants(...)
+
+        // 发射光线
+        auto fpCmdTraceRaysKHR = (PFN_vkCmdTraceRaysKHR)vkGetDeviceProcAddr(device, "vkCmdTraceRaysKHR");
+        if (fpCmdTraceRaysKHR) {
+            fpCmdTraceRaysKHR(
+                commandBuffer,
+                &rayTracingPipeline.raygenRegion,
+                &rayTracingPipeline.missRegion,
+                &rayTracingPipeline.hitRegion,
+                &rayTracingPipeline.callableRegion,
+                swapChainExtent.width,
+                swapChainExtent.height,
+                1
+            );
+        }
+
+
+        // 转换 outputImage 布局为 SHADER_READ_ONLY_OPTIMAL 以供采样
+        VkImageMemoryBarrier barrierToSample = {};
+        barrierToSample.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrierToSample.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        barrierToSample.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrierToSample.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrierToSample.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrierToSample.image = outputImage;
+        barrierToSample.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrierToSample.subresourceRange.baseMipLevel = 0;
+        barrierToSample.subresourceRange.levelCount = 1;
+        barrierToSample.subresourceRange.baseArrayLayer = 0;
+        barrierToSample.subresourceRange.layerCount = 1;
+        barrierToSample.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barrierToSample.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        vkCmdPipelineBarrier(
+            commandBuffer,
+            VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrierToSample
+        );
+
+
+        // 采样，用samplerPipeline渲染一个全屏四边形，将光线追踪结果输出到swapchain
+        vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, samplerPipeline.getHandle());
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, samplerPipeline.getLayout(), 0, 1, &samplerDescriptorSets[currentFrame], 0, nullptr);
+            VkViewport viewport{};
+            viewport.x = 0.0f;
+            viewport.y = 0.0f;
+            viewport.width = (float) swapChainExtent.width;
+            viewport.height = (float) swapChainExtent.height;
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
+            vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+            VkRect2D scissor{};
+            scissor.offset = {0,0};
+            scissor.extent = swapChainExtent;
+            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+            vkCmdDraw(commandBuffer, 6, 1, 0, 0); // 绘制一个全屏三角形
+        vkCmdEndRenderPass(commandBuffer);
+
+
+    } else {
+
+        vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, whiteModelPipeline.getHandle());
 
@@ -1176,16 +1191,10 @@ void BaseRayTracingRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, 
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, whiteModelPipeline.getLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
             vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(meshInstance.mesh->indices.size()), 1, 0, 0, 0);
         }
+        vkCmdEndRenderPass(commandBuffer);
+    }
 
-        // VkBuffer vertexBuffers[] = {vertexBuffer};
-        // VkDeviceSize offsets[] = {0};
-        // vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        // vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-        // vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, whiteModelPipeline.getLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
-        // vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
-
-    vkCmdEndRenderPass(commandBuffer);
     result = vkEndCommandBuffer(commandBuffer);
     if(result != VK_SUCCESS){
         throw std::runtime_error("failed to record command buffer!");
@@ -1222,6 +1231,10 @@ void BaseRayTracingRenderer::cleanupSwapChain(){
     vkDestroyImageView(device, colorImageView, nullptr);
     vkDestroyImage(device, colorImage, nullptr);
     vkFreeMemory(device, colorImageMemory, nullptr);
+
+    vkDestroyImageView(device, outputImageView, nullptr);
+    vkDestroyImage(device, outputImage, nullptr);
+    vkFreeMemory(device, outputImageMemory, nullptr);
 
     for(auto framebuffer: swapChainFramebuffers){
         vkDestroyFramebuffer(device, framebuffer, nullptr);
@@ -1458,6 +1471,18 @@ void BaseRayTracingRenderer::loadObjects(){
             .scale = glm::vec3(0.5f, 0.5f, 0.5f),
         }
     );
+
+    for (auto& instance: meshInstances){
+        InstanceAddressInfo instanceInfo{};
+        instanceInfo.indexBufferAddress = reinterpret_cast<uint64_t>(
+            bufferManager.getBufferDeviceAddress(instance.mesh->indexBuffer));
+        instanceInfo.vertexBufferAddress = reinterpret_cast<uint64_t>(
+            bufferManager.getBufferDeviceAddress(instance.mesh->vertexBuffer));
+        instanceAddressInfos.push_back(instanceInfo);
+    }
+
+    bufferManager.createStorageBuffer(sizeof(InstanceAddressInfo)*instanceAddressInfos.size(), instanceInfoBuffer, instanceAddressInfos.data());
+     
 }
 
 VkDeviceAddress BaseRayTracingRenderer::getBufferDeviceAddress(VkBuffer buffer){ 
@@ -1469,30 +1494,15 @@ VkDeviceAddress BaseRayTracingRenderer::getBufferDeviceAddress(VkBuffer buffer){
     return deviceAddress;
 }
 
-template<typename T>
 void BaseRayTracingRenderer::createUniformBuffers() {
-    VkDeviceSize bufferSize = sizeof(T);
-    uboSize = bufferSize;
-    uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-    uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+    bufferManager.createUniformBuffers(sizeof(timer.data),timer.uniformBuffer);
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        bufferManager.createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
+    pointLight.data = pointLightData;
+    bufferManager.createUniformBuffers(sizeof(pointLight.data),pointLight.uniformBuffer);
 
-        vkMapMemory(device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
-    }
+    globalInfo.data = globalInfoData;
+    bufferManager.createUniformBuffers(sizeof(globalInfo.data),globalInfo.uniformBuffer);
+
+    camera.data = cameraParameters.getCamera();
+    bufferManager.createUniformBuffers(sizeof(camera.data),camera.uniformBuffer);
 }
-
-
-template<typename T>
-void BaseRayTracingRenderer::updateUniformBuffer(uint32_t currentImage) {
-    T ubo{};
-    ubo.update();
-
-    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
-}
-
-template void BaseRayTracingRenderer::createUniformBuffers<MinimumUBO>();
-template void BaseRayTracingRenderer::updateUniformBuffer<MinimumUBO>(uint32_t currentImage);
-

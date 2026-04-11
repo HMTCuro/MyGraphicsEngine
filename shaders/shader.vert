@@ -3,9 +3,16 @@
 layout (location=0) in vec3 pos;
 layout (location=1) in vec3 norm;
 layout (location=2) in vec3 color;
-layout (binding=0) uniform UniformBufferObject {
+layout (binding=0) uniform TimeUBO {
     float time;
 }ubo;
+
+layout (binding=1) uniform CameraUBO {
+    vec3 pos;
+    float padding;
+    mat4 view;
+    mat4 proj;
+}ubo1;
 
 layout (push_constant, std430) uniform PushConstants {
     mat4 model;
@@ -35,8 +42,8 @@ void main(){
     // };
     
     fragWorldPos = (pushConstants.model * vec4(pos, 1.0)).xyz;
-    vec3 cameraPos = vec3(0.0f, 1.8f, -3.8f);
-
+    // vec3 cameraPos = vec3(0.0f, 1.8f, -3.8f);
+    vec3 cameraPos = ubo1.pos;
     mat4 perspective = {
         {1.0f/(tanHalfFovy * 1.0f),0.0f,0.0f,0.0f},
         {0.0f,1.0f/tanHalfFovy,0.0f,0.0f},
@@ -50,7 +57,10 @@ void main(){
         {0.0f,0.0f,1.0f,0.0f},
         {-cameraPos.x,-cameraPos.y,-cameraPos.z,1.0f}
     };
-    gl_Position = perspective * view * vec4(fragWorldPos, 1.0);
+    // gl_Position = ubo1.proj * ubo1.view * vec4(fragWorldPos, 1.0);
+    // gl_Position = perspective * view * vec4(fragWorldPos, 1.0);
+    gl_Position = ubo1.proj * ubo1.view * vec4(fragWorldPos, 1.0);
+    // gl_Position.y *= yStrech;
     gl_Position.y *= yStrech;
 
     fragDepth =  gl_Position.z ;
