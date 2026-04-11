@@ -90,7 +90,7 @@ private:
     GlobalInfoInstance globalInfo;
     CameraInstance camera;
     PointLight pointLightData{
-        .pos = glm::vec3(0.0f, 1.0f, 0.0f),
+        .pos = glm::vec3(0.0f, 3.0f, -1.0f),
         .color = glm::vec3(1.0f, 1.0f, 1.0f),
         .intensity = 1.0f
     };
