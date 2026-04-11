@@ -10,5 +10,5 @@ layout(location = 1) rayPayloadInEXT bool isShadow;
 void main()
 {
     // payload.color = vec3(1.0f, 0.0f, 0.0f); 
-    isShadow = false;
+    isShadow = true;
 }

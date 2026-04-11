@@ -8,7 +8,7 @@ layout (location = 0) out vec4 out_color;
 
 void main() {
     vec2 uv = gl_FragCoord.xy / window_size;
-    uv.y = 1 - uv.y;
+    // uv.y = 1 - uv.y;
     out_color = texture(image, uv);
     // out_color.rg = uv.xy;
 }

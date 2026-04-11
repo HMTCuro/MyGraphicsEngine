@@ -43,7 +43,7 @@ private:
         CUBE
     };
     std::vector<MeshInstance> meshInstances;
-    std::vector<InstanceAddressInfo> instanceAddressInfos;
+    std::vector<InstanceInfo> instanceAddressInfos;
     StorageBuffer instanceInfoBuffer;
 
     // Core variables
@@ -104,8 +104,8 @@ private:
         .direction = glm::vec3(0.0f, 0.0f, 1.0f),
         .pitchYawRoll = glm::vec3(0.0f),
         .fov = glm::radians(90.0f),
-        // .aspectRatio = 1920.0f / 1080.0f,
-        .aspectRatio = 1.0f,
+        .aspectRatio = 1920.0f / 1080.0f,
+        // .aspectRatio = 1.0f,
         .nearPlane = 0.1f,
         .farPlane = 100.0f
     };

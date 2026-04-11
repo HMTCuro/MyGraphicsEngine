@@ -43,12 +43,15 @@ void main() {
     Vertex v2 = vertices.vertices[idxs.z];
 
     vec3 pos = v0.pos * W.x + v1.pos * W.y + v2.pos * W.z;
-    vec3 normal = normalize(v0.normal * W.x + v1.normal * W.y + v2.normal * W.z);
+    vec3 normal = v0.normal * W.x + v1.normal * W.y + v2.normal * W.z;
+    mat4 model = info.modelMatrix;
+    normal = normalize((model * vec4(normal, 0)).xyz);
+    pos = (model * vec4(pos, 1)).xyz;
 
     vec3 L = normalize(light.pos - pos);
     float L_D = length(light.pos - pos);
 
-    isShadow = true;
+    isShadow = false;
     uint ray_flags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT;
     traceRayEXT(
         tlas,
@@ -62,9 +65,9 @@ void main() {
         L_D,
         1
     );
-
     payload.color = max(dot(L, normal), 0) * light.color * light.intensity / L_D / L_D;
-    // payload.color = vec3(1.0f, 1.0f, 1.0f);
+    // payload.color = max(dot(L, normal), 0) * light.color * light.intensity / L_D / L_D;
+    // payload.color = pos;
 
     if (isShadow) {
         payload.color *= 0.3f;

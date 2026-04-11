@@ -5,6 +5,7 @@
 struct InstanceInfo {
     uint64_t vertexBufferAddress;
     uint64_t indexBufferAddress;
+    mat4 modelMatrix;
 };
 
 struct SceneInfo {

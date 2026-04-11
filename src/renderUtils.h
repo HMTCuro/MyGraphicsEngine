@@ -7,9 +7,10 @@
 
 #include "basicObjects.h"
 
-struct InstanceAddressInfo{
+struct InstanceInfo{
     uint64_t  vertexBufferAddress;
     uint64_t  indexBufferAddress;
+    glm::mat4 modelMatrix;
 };
 
 struct ScratchBuffer

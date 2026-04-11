@@ -893,7 +893,7 @@ void BaseRayTracingRenderer::createRayTracingDescriptorSets(){
         VkDescriptorBufferInfo instanceBufferInfo{};
         instanceBufferInfo.buffer = instanceInfoBuffer.buffer[i];
         instanceBufferInfo.offset = 0;
-        instanceBufferInfo.range = sizeof(InstanceAddressInfo) * meshInstances.size();
+        instanceBufferInfo.range = sizeof(InstanceInfo) * meshInstances.size();
 
         VkDescriptorBufferInfo uboInfo0{};
         uboInfo0.buffer = globalInfo.uniformBuffer.buffer[i];
@@ -1473,15 +1473,16 @@ void BaseRayTracingRenderer::loadObjects(){
     );
 
     for (auto& instance: meshInstances){
-        InstanceAddressInfo instanceInfo{};
+        InstanceInfo instanceInfo{};
         instanceInfo.indexBufferAddress = reinterpret_cast<uint64_t>(
             bufferManager.getBufferDeviceAddress(instance.mesh->indexBuffer));
         instanceInfo.vertexBufferAddress = reinterpret_cast<uint64_t>(
             bufferManager.getBufferDeviceAddress(instance.mesh->vertexBuffer));
+        instanceInfo.modelMatrix = instance.getModelMatrix();
         instanceAddressInfos.push_back(instanceInfo);
     }
 
-    bufferManager.createStorageBuffer(sizeof(InstanceAddressInfo)*instanceAddressInfos.size(), instanceInfoBuffer, instanceAddressInfos.data());
+    bufferManager.createStorageBuffer(sizeof(InstanceInfo)*instanceAddressInfos.size(), instanceInfoBuffer, instanceAddressInfos.data());
      
 }
 

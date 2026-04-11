@@ -61,7 +61,6 @@ void main(){
     // gl_Position = perspective * view * vec4(fragWorldPos, 1.0);
     gl_Position = ubo1.proj * ubo1.view * vec4(fragWorldPos, 1.0);
     // gl_Position.y *= yStrech;
-    gl_Position.y *= yStrech;
 
     fragDepth =  gl_Position.z ;
 
