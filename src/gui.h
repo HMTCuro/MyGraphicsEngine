@@ -14,10 +14,17 @@ public:
     std::vector<VkCommandBuffer> commandBuffers;
     std::vector<VkSemaphore> guiAvailableSemaphores;
 
-    void init(RendererContext* pCtx, BufferManager* bufferManager, WindowContext* windowCtx){
+    void init(
+        RendererContext* pCtx, 
+        BufferManager* bufferManager, 
+        WindowContext* windowCtx,
+        PointLight* pointlight,
+        CameraParameters* cameraParameters){
         this->pCtx = pCtx;
         this->pBufferManager = bufferManager;
         this->pWindowCtx = windowCtx;
+        this->pointlight = pointlight;
+        this->cameraParameters = cameraParameters;
         graphicsQueueFamilyIndex = findGraphicsQueueFamilies();
         
         IMGUI_CHECKVERSION();
@@ -108,6 +115,10 @@ public:
 
         ImGui::Begin("Info");
         ImGui::Text("Hello, Vulkan!");
+        ImGui::SliderFloat("Light Intensity", &pointlight->intensity, 0.0f, 1.0f);
+        ImGui::DragFloat3("Light Position", &pointlight->pos.x, 0.1f);
+        ImGui::DragFloat3("Camera Position", &cameraParameters->position.x, 0.1f);
+        ImGui::DragFloat3("Camera Pitch/Yaw/Roll", &cameraParameters->pitchYawRoll.x, 0.1f);
         ImGui::End();
 
         ImGui::Render();
@@ -213,6 +224,11 @@ private:
     RendererContext* pCtx;
     WindowContext* pWindowCtx;
     BufferManager* pBufferManager;
+
+
+    //ubo
+    PointLight* pointlight;
+    CameraParameters* cameraParameters;
 
     uint32_t graphicsQueueFamilyIndex;
     VkCommandPool commandPool;

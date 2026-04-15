@@ -44,7 +44,7 @@ void BaseRayTracingRenderer::initVulkan() {
     createSyncObjects();
     std::cout << "Vulkan Initialized" << std::endl;
 
-    gui.init(&ctx, &bufferManager, &windowCtx);
+    gui.init(&ctx, &bufferManager, &windowCtx, &pointLightData,&cameraParameters);
     gui.createFramebuffers(swapChainImageViews, swapChainExtent);
 
 }
@@ -65,6 +65,7 @@ void BaseRayTracingRenderer::drawFrame() {
     // updateUniformBuffer<MinimumUBO>(currentFrame);
     timer.data.update();
     bufferManager.updateUniformBuffer(currentFrame, timer.uniformBuffer, &timer.data, sizeof(timer.data));
+    camera.data = cameraParameters.getCamera();
     bufferManager.updateUniformBuffer(currentFrame, camera.uniformBuffer, &camera.data, sizeof(camera.data));
     bufferManager.updateUniformBuffer(currentFrame, pointLight.uniformBuffer, &pointLightData, sizeof(pointLightData));
     bufferManager.updateUniformBuffer(currentFrame, globalInfo.uniformBuffer, &globalInfoData, sizeof(globalInfoData));
