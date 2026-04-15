@@ -85,7 +85,7 @@ public:
     }
 protected:
     RendererContext* pCtx;
-    VkRenderPass renderPass;
+    VkRenderPass renderPass = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout;
     VkPipeline pipeline;
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
@@ -136,6 +136,7 @@ public:
     void setProperties(VkDevice device){
         this->device = device;
     }
+
     virtual void createDescriptorSetLayout() = 0;
     void destroyDescriptorSetLayout() {
         for (const auto& descriptorSetLayout : descriptorSetLayouts) {
@@ -145,6 +146,29 @@ public:
 protected:
     VkDevice device;
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+
+    VkDescriptorSetLayoutBinding createBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t descriptorCount = 1){
+        VkDescriptorSetLayoutBinding layoutBinding{};
+        layoutBinding.binding = binding;
+        layoutBinding.descriptorType = type;
+        layoutBinding.descriptorCount = descriptorCount;
+        layoutBinding.stageFlags = stageFlags;
+        return layoutBinding;
+    }
+    void addLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings){
+        std::vector<VkDescriptorSetLayoutBinding> layoutBindings = bindings;
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
+        layoutInfo.pBindings = layoutBindings.data();
+
+        VkDescriptorSetLayout descriptorSetLayout;
+        VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
+        if (result != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor set layout!");
+        }
+        descriptorSetLayouts.push_back(descriptorSetLayout);
+    }
 };
 
 class WhiteModelPipeline1: public BasePipeline{
@@ -285,34 +309,40 @@ public:
 class WhiteModelDescriptorSetLayoutBundle: public BaseDescriptorSetLayoutBundle{
 public:
     void createDescriptorSetLayout() override {
-        VkDescriptorSetLayoutBinding uboLayoutBinding0{};
-        uboLayoutBinding0.binding = 0;
-        uboLayoutBinding0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uboLayoutBinding0.descriptorCount = 1;
-        uboLayoutBinding0.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
-        uboLayoutBinding0.pImmutableSamplers = nullptr;
+        std::vector<VkDescriptorSetLayoutBinding> bindings;
+        bindings.push_back(createBinding(
+            0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL_GRAPHICS));
+        bindings.push_back(createBinding(
+            1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL_GRAPHICS));
+        addLayout(bindings);
+        // VkDescriptorSetLayoutBinding uboLayoutBinding0{};
+        // uboLayoutBinding0.binding = 0;
+        // uboLayoutBinding0.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        // uboLayoutBinding0.descriptorCount = 1;
+        // uboLayoutBinding0.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+        // uboLayoutBinding0.pImmutableSamplers = nullptr;
 
-        VkDescriptorSetLayoutBinding uboLayoutBinding1{};
-        uboLayoutBinding1.binding = 1;
-        uboLayoutBinding1.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uboLayoutBinding1.descriptorCount = 1;
-        uboLayoutBinding1.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
-        uboLayoutBinding1.pImmutableSamplers = nullptr;
+        // VkDescriptorSetLayoutBinding uboLayoutBinding1{};
+        // uboLayoutBinding1.binding = 1;
+        // uboLayoutBinding1.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        // uboLayoutBinding1.descriptorCount = 1;
+        // uboLayoutBinding1.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+        // uboLayoutBinding1.pImmutableSamplers = nullptr;
 
-        std::array<VkDescriptorSetLayoutBinding,2> bindings = {uboLayoutBinding0, uboLayoutBinding1};
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-        layoutInfo.pBindings = bindings.data();
+        // std::array<VkDescriptorSetLayoutBinding,2> bindings = {uboLayoutBinding0, uboLayoutBinding1};
+        // VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        // layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        // layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        // layoutInfo.pBindings = bindings.data();
 
-        VkDescriptorSetLayout descriptorSetLayout;
+        // VkDescriptorSetLayout descriptorSetLayout;
 
-        VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-        if(result != VK_SUCCESS){
-            throw std::runtime_error("failed to create descriptor set layout!");
-        }
+        // VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
+        // if(result != VK_SUCCESS){
+        //     throw std::runtime_error("failed to create descriptor set layout!");
+        // }
 
-        descriptorSetLayouts.push_back(descriptorSetLayout);
+        // descriptorSetLayouts.push_back(descriptorSetLayout);
     }
 };
 
@@ -533,72 +563,36 @@ public:
         // set 1 binding 1: camera uniform buffer
         // set 1 binding 2: light uniform buffer
         VkResult result;
+        std::vector<VkDescriptorSetLayoutBinding> set0Bindings;
+        std::vector<VkDescriptorSetLayoutBinding> set1Bindings;
 
-        VkDescriptorSetLayoutBinding tlasBinding{};
-        tlasBinding.binding = 0;
-        tlasBinding.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-        tlasBinding.descriptorCount = 1;
-        tlasBinding.stageFlags = VK_SHADER_STAGE_ALL;
+        set0Bindings.push_back(createBinding(
+            0, 
+            VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 
+            VK_SHADER_STAGE_ALL));
+        set0Bindings.push_back(createBinding(
+            1, 
+            VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 
+            VK_SHADER_STAGE_ALL));
+        set0Bindings.push_back(createBinding(
+            2, 
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+            VK_SHADER_STAGE_ALL));
+        set1Bindings.push_back(createBinding(
+            0, 
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 
+            VK_SHADER_STAGE_ALL));
+        set1Bindings.push_back(createBinding(
+            1, 
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 
+            VK_SHADER_STAGE_ALL));
+        set1Bindings.push_back(createBinding(
+            2, 
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 
+            VK_SHADER_STAGE_ALL));
 
-        VkDescriptorSetLayoutBinding outImageBinding{};
-        outImageBinding.binding = 1;
-        outImageBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        outImageBinding.descriptorCount = 1;
-        outImageBinding.stageFlags = VK_SHADER_STAGE_ALL;
-
-        VkDescriptorSetLayoutBinding instanceInfoBinding{};
-        instanceInfoBinding.binding = 2;
-        instanceInfoBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        instanceInfoBinding.descriptorCount = 1;
-        instanceInfoBinding.stageFlags = VK_SHADER_STAGE_ALL;
-
-        VkDescriptorSetLayoutBinding globalUniformBinding{};
-        globalUniformBinding.binding = 0;
-        globalUniformBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        globalUniformBinding.descriptorCount = 1;
-        globalUniformBinding.stageFlags = VK_SHADER_STAGE_ALL;
-
-        VkDescriptorSetLayoutBinding cameraUniformBinding{};
-        cameraUniformBinding.binding = 1;
-        cameraUniformBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        cameraUniformBinding.descriptorCount = 1;
-        cameraUniformBinding.stageFlags = VK_SHADER_STAGE_ALL;
-
-        VkDescriptorSetLayoutBinding lightUniformBinding{};
-        lightUniformBinding.binding = 2;
-        lightUniformBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        lightUniformBinding.descriptorCount = 1;
-        lightUniformBinding.stageFlags = VK_SHADER_STAGE_ALL;
-
-        std::array<VkDescriptorSetLayoutBinding, 3> set0Bindings = {tlasBinding, outImageBinding, instanceInfoBinding};
-        std::array<VkDescriptorSetLayoutBinding, 3> set1Bindings = {globalUniformBinding, cameraUniformBinding, lightUniformBinding};
-
-        VkDescriptorSetLayoutCreateInfo layoutInfo0{};
-        layoutInfo0.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo0.bindingCount = static_cast<uint32_t>(set0Bindings.size());
-        layoutInfo0.pBindings = set0Bindings.data();
-
-        VkDescriptorSetLayoutCreateInfo layoutInfo1{};
-        layoutInfo1.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo1.bindingCount = static_cast<uint32_t>(set1Bindings.size());
-        layoutInfo1.pBindings = set1Bindings.data();
-
-        VkDescriptorSetLayout descriptorSetLayout0;
-        VkDescriptorSetLayout descriptorSetLayout1;
-
-        result = vkCreateDescriptorSetLayout(device, &layoutInfo0, nullptr, &descriptorSetLayout0);
-        if(result != VK_SUCCESS){
-            throw std::runtime_error("failed to create ray tracing descriptor set layout 0!");
-        }
-
-        result = vkCreateDescriptorSetLayout(device, &layoutInfo1, nullptr, &descriptorSetLayout1);
-        if(result != VK_SUCCESS){
-            throw std::runtime_error("failed to create ray tracing descriptor set layout 1!");
-        }
-
-        descriptorSetLayouts.push_back(descriptorSetLayout0);
-        descriptorSetLayouts.push_back(descriptorSetLayout1);
-
+        addLayout(set0Bindings);
+        addLayout(set1Bindings);
         /***
          * rgen:
         layout (binding = 0, set = 0) uniform accelerationStructureEXT tlas;

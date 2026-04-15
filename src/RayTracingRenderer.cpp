@@ -20,8 +20,6 @@ void BaseRayTracingRenderer::initVulkan() {
     initContextAndManager();
     createDescriptorSetLayout(); // For all descriptor sets
     createGraphicsPipeline(); // For all graphics pipelines
-    
-    
     createColorResources();
     createDepthResources();
     createRTOutResources();
@@ -45,6 +43,10 @@ void BaseRayTracingRenderer::initVulkan() {
     createCommandBuffers();
     createSyncObjects();
     std::cout << "Vulkan Initialized" << std::endl;
+
+    gui.init(&ctx, &bufferManager, &windowCtx);
+    gui.createFramebuffers(swapChainImageViews, swapChainExtent);
+
 }
 
 void BaseRayTracingRenderer::drawFrame() {
@@ -71,23 +73,40 @@ void BaseRayTracingRenderer::drawFrame() {
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+
+
+    gui.render(imageIndex, swapChainExtent, currentFrame, swapChainImages[imageIndex]);
+
+
 
     VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = waitSemaphores;
     submitInfo.pWaitDstStageMask = waitStages;
-
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
-
-    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]);
+    VkSubmitInfo guiSubmitInfo{};
+    guiSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    guiSubmitInfo.waitSemaphoreCount = 1;
+    guiSubmitInfo.pWaitSemaphores = signalSemaphores;
+    guiSubmitInfo.pWaitDstStageMask = waitStages;
+    guiSubmitInfo.commandBufferCount = 1;
+    guiSubmitInfo.pCommandBuffers = &gui.commandBuffers[currentFrame];
+    guiSubmitInfo.signalSemaphoreCount = 1;
+    guiSubmitInfo.pSignalSemaphores = gui.guiAvailableSemaphores.empty() ? signalSemaphores : &gui.guiAvailableSemaphores[currentFrame];
+
+    VkSubmitInfo submits[] = {submitInfo, guiSubmitInfo};
+
+    result = vkQueueSubmit(graphicsQueue, 2, submits, inFlightFences[currentFrame]);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to submit draw command buffer!");
     }
@@ -95,7 +114,7 @@ void BaseRayTracingRenderer::drawFrame() {
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalSemaphores;
+    presentInfo.pWaitSemaphores = gui.guiAvailableSemaphores.empty() ? signalSemaphores : &gui.guiAvailableSemaphores[currentFrame];
     VkSwapchainKHR swapChains[] = {swapChain};
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapChains;
@@ -110,6 +129,40 @@ void BaseRayTracingRenderer::drawFrame() {
     }
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+
+    // VkSubmitInfo submitInfo{};
+    // submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    // submitInfo.waitSemaphoreCount = 1;
+    // submitInfo.pWaitSemaphores = waitSemaphores;
+    // submitInfo.pWaitDstStageMask = waitStages;
+    // submitInfo.commandBufferCount = 1;
+    // submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+    // submitInfo.signalSemaphoreCount = 1;
+    // submitInfo.pSignalSemaphores = signalSemaphores;
+
+    // result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]);
+    // if (result != VK_SUCCESS) {
+    //     throw std::runtime_error("failed to submit draw command buffer!");
+    // }
+
+    // VkPresentInfoKHR presentInfo{};
+    // presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    // presentInfo.waitSemaphoreCount = 1;
+    // presentInfo.pWaitSemaphores = signalSemaphores;
+    // VkSwapchainKHR swapChains[] = {swapChain};
+    // presentInfo.swapchainCount = 1;
+    // presentInfo.pSwapchains = swapChains;
+    // presentInfo.pImageIndices = &imageIndex;
+
+    // result = vkQueuePresentKHR(presentQueue, &presentInfo);
+    // if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
+    //     framebufferResized = false;
+    //     recreateSwapChain();
+    // } else if (result != VK_SUCCESS) {
+    //     throw std::runtime_error("failed to present swap chain image!");
+    // }
+
+    // currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 void BaseRayTracingRenderer::cleanupVulkan() {
@@ -171,6 +224,9 @@ void BaseRayTracingRenderer::cleanupVulkan() {
     vkDestroySampler(device, textureSampler, nullptr);
 
     vkDestroyRenderPass(device, renderPass, nullptr);
+
+    gui.cleanup();
+
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
     // vkDestroyDebugUtilsMessengerEXT
@@ -184,6 +240,9 @@ void BaseRayTracingRenderer::cleanupVulkan() {
     for (auto& mesh : meshes) {
         delete mesh;
     }
+
+
+    
 }
 
 void BaseRayTracingRenderer::setFramebufferResizeCallback(){
@@ -344,6 +403,7 @@ void BaseRayTracingRenderer::createLogicalDevice(){
     float queuePriority = 1.0f;
 
     for(int32_t queueFamily:uniqueQueueFamilies){
+        std::cout << "Queue Family Index: " << queueFamily << std::endl;
         VkDeviceQueueCreateInfo queueCreateInfo{};
         queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         queueCreateInfo.queueFamilyIndex = static_cast<uint32_t>(queueFamily);
@@ -355,7 +415,6 @@ void BaseRayTracingRenderer::createLogicalDevice(){
 
     bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
     accelerationStructureFeatures.accelerationStructure = VK_TRUE;
-    // accelerationStructureFeatures.accelerationStructureHostCommands = VK_TRUE;
     rayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
 
     VkDeviceCreateInfo createInfo{};
@@ -383,7 +442,6 @@ void BaseRayTracingRenderer::createLogicalDevice(){
 
     createInfo.pNext = &deviceFeatures2;
 
-
     VkResult result = vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
     if(result != VK_SUCCESS){
         throw std::runtime_error("failed to create logical device!");
@@ -402,12 +460,12 @@ void BaseRayTracingRenderer::createLogicalDevice(){
     // }
 
 
-    auto testFunc = (PFN_vkGetBufferDeviceAddress)vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddressKHR");
-    if (testFunc) {
-        std::cout << "SUCCESS: vkGetBufferDeviceAddress function loaded successfully!" << std::endl;
-    } else {
-        std::cout << "FAILED: vkGetBufferDeviceAddress function could not be loaded!" << std::endl;
-    }
+    // auto testFunc = (PFN_vkGetBufferDeviceAddress)vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddressKHR");
+    // if (testFunc) {
+    //     std::cout << "SUCCESS: vkGetBufferDeviceAddress function loaded successfully!" << std::endl;
+    // } else {
+    //     std::cout << "FAILED: vkGetBufferDeviceAddress function could not be loaded!" << std::endl;
+    // }
 }
 
 void BaseRayTracingRenderer::createSwapChain(){

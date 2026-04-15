@@ -13,6 +13,10 @@ set(glm_DIR "C:/Users/root/CppExtensions/glm/build" CACHE PATH "Path to glmConfi
 set(CMAKE_BUILD_TYPE Debug)
 # set(CMAKE_BUILD_TYPE Release)
 
+set(IMGUI_DIR "src/third_party/imgui" )
+
+
+
 include_directories(
     "src"
     "src/include"
@@ -26,6 +30,8 @@ add_executable(BasicVkRenderer
     src/RayTracingRenderer.cpp
 )
 
+# imgui
+
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 find_package(Vulkan REQUIRED)
@@ -35,6 +41,25 @@ target_link_libraries(BasicVkRenderer
     Vulkan::Vulkan
     ${GLFW_LIBRARY}
     glm::glm
+)
+
+target_include_directories(BasicVkRenderer PRIVATE
+    ${IMGUI_DIR} 
+    ${IMGUI_DIR}/backends
+)
+
+target_sources(${PROJECT_NAME} PRIVATE
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    # imgui_demo.cpp 通常可选，供学习和调试
+    ${IMGUI_DIR}/imgui_demo.cpp
+)
+
+target_sources(${PROJECT_NAME} PRIVATE
+    ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp # 根据你的平台后端调整
 )
 
 # Compile glsl shaders to SPIR-V at build time

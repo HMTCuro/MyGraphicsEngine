@@ -32,6 +32,12 @@ public:
     uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 };
 
+class WindowContext{
+public:
+    GLFWwindow* window = nullptr;
+    uint32_t width = 800;
+    uint32_t height = 600;  
+};
 
 
 class BufferManager{

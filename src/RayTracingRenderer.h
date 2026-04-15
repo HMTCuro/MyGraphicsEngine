@@ -3,6 +3,7 @@
 #include "renderer.h"
 #include "pipeline.h"
 #include "accelerationStructure.h"
+#include "gui.h"
 
 #include <memory>
 #include <map>
@@ -81,6 +82,7 @@ private:
     VkImageView depthImageView;
 
     RendererContext ctx;
+    WindowContext windowCtx;
     BufferManager bufferManager;
     AccelerationStructureManager asManager;
 
@@ -150,6 +152,7 @@ private:
 
     VkSampler textureSampler;
 
+    CustomGUI gui;
 
     // Core functions
     void createInstance(); // Necessary: Create Vulkan instance
@@ -167,6 +170,11 @@ private:
         ctx.commandPool = commandPool;
         ctx.graphicsQueue = graphicsQueue;
         ctx.MAX_FRAMES_IN_FLIGHT = MAX_FRAMES_IN_FLIGHT;
+
+        windowCtx.window = window;
+        windowCtx.width = swapChainExtent.width;
+        windowCtx.height = swapChainExtent.height;
+
         bufferManager.init(&ctx);
         asManager.init(&ctx, &bufferManager);
     }
