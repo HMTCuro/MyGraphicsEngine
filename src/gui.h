@@ -2,6 +2,7 @@
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <chrono>
 
 #include "renderUtils.h"
 #include "imgui.h"
@@ -107,7 +108,6 @@ public:
             0, nullptr,
             1, &barrier
         );
-
 
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -224,7 +224,9 @@ private:
     RendererContext* pCtx;
     WindowContext* pWindowCtx;
     BufferManager* pBufferManager;
-
+    uint8_t framesAccumulated = 0;
+    float timeStamp0 = 0.0f;
+    float timeStamp1 = 0.0f;
 
     //ubo
     PointLight* pointlight;
