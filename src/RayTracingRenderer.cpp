@@ -546,11 +546,22 @@ void BaseRayTracingRenderer::recreateSwapChain(){
 
     cleanupSwapChain();
 
+    windowCtx.width = width;
+    windowCtx.height = height;
+
+    globalInfoData.windowSize = glm::vec2(width, height);
+    cameraParameters.aspectRatio = static_cast<float>(width) / static_cast<float>(height);
+
+    swapChainExtent.width = width;
+    swapChainExtent.height = height;
+
     createSwapChain();
     createImageViews();
     createColorResources();
     createDepthResources();
+    createRTOutResources();
     createFramebuffers();
+    gui.createFramebuffers(swapChainImageViews, swapChainExtent);
 }
 
 void BaseRayTracingRenderer::waitIdle(){

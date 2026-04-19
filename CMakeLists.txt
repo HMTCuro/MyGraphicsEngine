@@ -21,14 +21,27 @@ include_directories(
     "src"
     "src/include"
     "shaders"
+    "src/third_party/stb_image"
     ${GLFW_INCLUDE_DIR}
 )
 
+file(GLOB SRC_FILES "src/*.cpp")
+
 add_executable(BasicVkRenderer
-    src/main.cpp
-    src/Renderer.cpp
-    src/RayTracingRenderer.cpp
+    ${SRC_FILES}
+    # src/main.cpp
+    # src/Renderer.cpp
+    # src/RayTracingRenderer.cpp
+    # src/shaderUtils.cpp
 )
+
+
+add_executable(btfViewer
+    src/btfExamine/btfExaminer.cpp
+)
+
+target_compile_options(btfViewer PRIVATE -march=native)
+target_compile_options(BasicVkRenderer PRIVATE -march=native)
 
 # imgui
 

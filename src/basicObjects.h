@@ -9,6 +9,7 @@
 #include <glm/gtx/euler_angles.hpp>
 
 #include <vector>
+#include <chrono>
 
 struct Vertex {
     glm::vec3 pos;
@@ -203,49 +204,48 @@ struct MeshInstance{
 class RoomMesh : public Mesh{
 public:
     RoomMesh() {
-        // 白色颜色常量
-        glm::vec3 white(1.0f, 1.0f, 1.0f);
-        
-        // 定义6个面的顶点（每个面4个顶点，法线指向内部）
-        // 面顺序：前、后、左、右、上、下
-        // 坐标范围：-1 到 1
-        
+        // 每个面的4个顶点的UV坐标（左下、右下、右上、左上）
+        glm::vec3 uv00(0.0f, 0.0f, 0.0f); // 左下
+        glm::vec3 uv10(1.0f, 0.0f, 0.0f); // 右下
+        glm::vec3 uv11(1.0f, 1.0f, 0.0f); // 右上
+        glm::vec3 uv01(0.0f, 1.0f, 0.0f); // 左上
+
         // 前表面 (z = 1, 法线指向 -z)
-        vertices.push_back({{-1, -1,  1}, { 0,  0, -1}, white});
-        vertices.push_back({{ 1, -1,  1}, { 0,  0, -1}, white});
-        vertices.push_back({{ 1,  1,  1}, { 0,  0, -1}, white});
-        vertices.push_back({{-1,  1,  1}, { 0,  0, -1}, white});
-        
+        vertices.push_back({{-1, -1,  1}, { 0,  0, -1}, uv00});
+        vertices.push_back({{ 1, -1,  1}, { 0,  0, -1}, uv10});
+        vertices.push_back({{ 1,  1,  1}, { 0,  0, -1}, uv11});
+        vertices.push_back({{-1,  1,  1}, { 0,  0, -1}, uv01});
+
         // 后表面 (z = -1, 法线指向 +z)
-        vertices.push_back({{ 1, -1, -1}, { 0,  0,  1}, white});
-        vertices.push_back({{-1, -1, -1}, { 0,  0,  1}, white});
-        vertices.push_back({{-1,  1, -1}, { 0,  0,  1}, white});
-        vertices.push_back({{ 1,  1, -1}, { 0,  0,  1}, white});
-        
+        vertices.push_back({{ 1, -1, -1}, { 0,  0,  1}, uv00});
+        vertices.push_back({{-1, -1, -1}, { 0,  0,  1}, uv10});
+        vertices.push_back({{-1,  1, -1}, { 0,  0,  1}, uv11});
+        vertices.push_back({{ 1,  1, -1}, { 0,  0,  1}, uv01});
+
         // 左表面 (x = -1, 法线指向 +x)
-        vertices.push_back({{-1, -1, -1}, { 1,  0,  0}, white});
-        vertices.push_back({{-1, -1,  1}, { 1,  0,  0}, white});
-        vertices.push_back({{-1,  1,  1}, { 1,  0,  0}, white});
-        vertices.push_back({{-1,  1, -1}, { 1,  0,  0}, white});
-        
+        vertices.push_back({{-1, -1, -1}, { 1,  0,  0}, uv00});
+        vertices.push_back({{-1, -1,  1}, { 1,  0,  0}, uv10});
+        vertices.push_back({{-1,  1,  1}, { 1,  0,  0}, uv11});
+        vertices.push_back({{-1,  1, -1}, { 1,  0,  0}, uv01});
+
         // 右表面 (x = 1, 法线指向 -x)
-        vertices.push_back({{ 1, -1,  1}, {-1,  0,  0}, white});
-        vertices.push_back({{ 1, -1, -1}, {-1,  0,  0}, white});
-        vertices.push_back({{ 1,  1, -1}, {-1,  0,  0}, white});
-        vertices.push_back({{ 1,  1,  1}, {-1,  0,  0}, white});
-        
+        vertices.push_back({{ 1, -1,  1}, {-1,  0,  0}, uv00});
+        vertices.push_back({{ 1, -1, -1}, {-1,  0,  0}, uv10});
+        vertices.push_back({{ 1,  1, -1}, {-1,  0,  0}, uv11});
+        vertices.push_back({{ 1,  1,  1}, {-1,  0,  0}, uv01});
+
         // 上表面 (y = 1, 法线指向 -y)
-        vertices.push_back({{-1,  1,  1}, { 0, -1,  0}, white});
-        vertices.push_back({{ 1,  1,  1}, { 0, -1,  0}, white});
-        vertices.push_back({{ 1,  1, -1}, { 0, -1,  0}, white});
-        vertices.push_back({{-1,  1, -1}, { 0, -1,  0}, white});
-        
+        vertices.push_back({{-1,  1,  1}, { 0, -1,  0}, uv00});
+        vertices.push_back({{ 1,  1,  1}, { 0, -1,  0}, uv10});
+        vertices.push_back({{ 1,  1, -1}, { 0, -1,  0}, uv11});
+        vertices.push_back({{-1,  1, -1}, { 0, -1,  0}, uv01});
+
         // 下表面 (y = -1, 法线指向 +y)
-        vertices.push_back({{-1, -1, -1}, { 0,  1,  0}, white});
-        vertices.push_back({{ 1, -1, -1}, { 0,  1,  0}, white});
-        vertices.push_back({{ 1, -1,  1}, { 0,  1,  0}, white});
-        vertices.push_back({{-1, -1,  1}, { 0,  1,  0}, white});
-        
+        vertices.push_back({{-1, -1, -1}, { 0,  1,  0}, uv00});
+        vertices.push_back({{ 1, -1, -1}, { 0,  1,  0}, uv10});
+        vertices.push_back({{ 1, -1,  1}, { 0,  1,  0}, uv11});
+        vertices.push_back({{-1, -1,  1}, { 0,  1,  0}, uv01});
+
         // 生成索引（每个面两个三角形）
         for (uint32_t face = 0; face < 6; face++) {
             uint32_t baseIndex = face * 4;

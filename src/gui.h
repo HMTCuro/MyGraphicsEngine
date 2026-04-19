@@ -73,6 +73,16 @@ public:
 
     void render(uint32_t imageIndex, VkExtent2D extent,uint32_t currentFrame,
     VkImage currentSwapChainImage){
+        framesAccumulated++;
+        auto now = std::chrono::high_resolution_clock::now();
+        if (framesAccumulated >= 100) {
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - timeStamp0).count();
+            fps = framesAccumulated / (duration / 1000.0f);
+            framesAccumulated = 0;
+            timeStamp0 = now;
+        }
+
+
         vkResetCommandBuffer(commandBuffers[currentFrame], 0);
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -115,6 +125,7 @@ public:
 
         ImGui::Begin("Info");
         ImGui::Text("Hello, Vulkan!");
+        ImGui::Text("FPS: %.2f", fps);
         ImGui::SliderFloat("Light Intensity", &pointlight->intensity, 0.0f, 1.0f);
         ImGui::DragFloat3("Light Position", &pointlight->pos.x, 0.1f);
         ImGui::DragFloat3("Camera Position", &cameraParameters->position.x, 0.1f);
@@ -224,9 +235,10 @@ private:
     RendererContext* pCtx;
     WindowContext* pWindowCtx;
     BufferManager* pBufferManager;
-    uint8_t framesAccumulated = 0;
-    float timeStamp0 = 0.0f;
-    float timeStamp1 = 0.0f;
+    uint32_t framesAccumulated = 0;
+    float fps = 0.0f;
+    std::chrono::high_resolution_clock::time_point timeStamp0;
+
 
     //ubo
     PointLight* pointlight;

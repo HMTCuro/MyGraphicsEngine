@@ -7,6 +7,7 @@
 
 #include "basicObjects.h"
 #include "renderUtils.h"
+#include "shaderUtils.h"
 
 #include <fstream>
 
@@ -91,38 +92,6 @@ protected:
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
     BufferManager* bufferManager;
 
-    std::vector<char> readSpvFile(const std::string& filename) {
-        std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-        if (!file.is_open()) {
-            throw std::runtime_error("failed to open file!");
-        }
-
-        size_t fileSize = (size_t) file.tellg();
-        std::vector<char> buffer(fileSize);
-
-        file.seekg(0);
-        file.read(buffer.data(), fileSize);
-
-        file.close();
-
-        return buffer;
-    }
-    VkShaderModule createShaderModule(const std::vector<char>& code) {
-        VkShaderModuleCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        createInfo.codeSize = code.size();
-        createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-        VkShaderModule shaderModule;
-        VkResult result = vkCreateShaderModule(pCtx->device, &createInfo, nullptr, &shaderModule);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("failed to create shader module!");
-        }
-
-        return shaderModule;
-    }
-
 };
 
 class BaseDescriptorSetLayoutBundle{
@@ -174,11 +143,8 @@ protected:
 class WhiteModelPipeline1: public BasePipeline{
 public:
     void createPipeline() override {
-        std::vector<char> vertShaderCode = readSpvFile(vshPaths[0]);
-        std::vector<char> fragShaderCode = readSpvFile(fshPaths[0]);
-
-        VkShaderModule vertShaderModule= createShaderModule(vertShaderCode);
-        VkShaderModule fragShaderModule= createShaderModule(fragShaderCode);
+        VkShaderModule vertShaderModule=ShaderFactory::CreateShaderModuleFromFile(pCtx->device, vshPaths[0]);
+        VkShaderModule fragShaderModule=ShaderFactory::CreateShaderModuleFromFile(pCtx->device, fshPaths[0]);
 
         VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
         vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -362,17 +328,10 @@ public:
         // Implementation of ray tracing pipeline creation goes here
         std::cout << "--------Creating Ray Tracing Pipeline---------" << std::endl;
         VkResult result;
-        const char* rayGenShaderPath = "../shader_spv/raygen.spv";
-        const char* missShaderPath = "../shader_spv/miss.spv";
-        const char* hitShaderPath = "../shader_spv/closeHit.spv";
-        std::vector<char> rayGenShaderCode = readSpvFile(rayGenShaderPath);
-        std::vector<char> missShaderCode = readSpvFile(missShaderPath);
-        std::vector<char> hitShaderCode = readSpvFile(hitShaderPath);
-        VkShaderModule rayGenShaderModule = createShaderModule(rayGenShaderCode);
-        VkShaderModule missShaderModule = createShaderModule(missShaderCode);
-        VkShaderModule hitShaderModule = createShaderModule(hitShaderCode);
 
-        std::cout << "Shader modules created successfully." << std::endl;
+        VkShaderModule rayGenShaderModule = ShaderFactory::CreateShaderModuleFromFile(pCtx->device, "../shader_spv/raygen.spv");
+        VkShaderModule missShaderModule = ShaderFactory::CreateShaderModuleFromFile(pCtx->device, "../shader_spv/miss.spv");
+        VkShaderModule hitShaderModule = ShaderFactory::CreateShaderModuleFromFile(pCtx->device, "../shader_spv/closeHit.spv");
 
         enum StageIndices {
             eRaygen,
@@ -632,10 +591,8 @@ class TextureSamplerPipeline: public BasePipeline{
 public:
     void createPipeline() override {
         // 1. 读取全屏顶点和片元着色器
-        std::vector<char> vertShaderCode = readSpvFile(vshPaths[1]);
-        std::vector<char> fragShaderCode = readSpvFile(fshPaths[1]);
-        VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-        VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+        VkShaderModule vertShaderModule=ShaderFactory::CreateShaderModuleFromFile(pCtx->device, vshPaths[1]);
+        VkShaderModule fragShaderModule=ShaderFactory::CreateShaderModuleFromFile(pCtx->device, fshPaths[1]);
 
         VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
         vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
