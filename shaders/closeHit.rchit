@@ -51,15 +51,15 @@ void main() {
     vec3 L = normalize(light.pos - pos);
     float L_D = length(light.pos - pos);
 
-    isShadow = false;
+    isShadow = true;
     uint ray_flags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT;
     traceRayEXT(
         tlas,
         ray_flags,
         0xff,
         0, 0,
-        1,
-        pos,
+        0,
+        pos+normal*0.001, // 避免自相交
         0.0001,
         L,
         L_D,

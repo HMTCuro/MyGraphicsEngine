@@ -36,8 +36,6 @@ void BaseRayTracingRenderer::initVulkan() {
 
     createRayTracingDescriptorPool();
     createRayTracingDescriptorSets();
-
-    createSamplerDescriptorPool();
     createSamplerDescriptorSets();
 
     createCommandBuffers();
@@ -180,9 +178,6 @@ void BaseRayTracingRenderer::cleanupVulkan() {
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
     if(rayTracingDescriptorPool!= VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(device, rayTracingDescriptorPool, nullptr);
-    }
-    if(samplerDescriptorPool != VK_NULL_HANDLE){
-        vkDestroyDescriptorPool(device, samplerDescriptorPool, nullptr);
     }
 
     bufferManager.destroyUniformBuffers(timer.uniformBuffer);
@@ -390,6 +385,20 @@ void BaseRayTracingRenderer::pickPhysicalDevice(){
     else {
         std::cout << "Buffer device address feature is supported!" << std::endl;
     }
+
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtProps = {};
+    rtProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
+    rtProps.pNext = nullptr;
+
+    VkPhysicalDeviceProperties2 deviceProps = {};
+    deviceProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    deviceProps.pNext = &rtProps;
+
+    vkGetPhysicalDeviceProperties2(physicalDevice, &deviceProps);
+
+    std::cout << "Ray Tracing Pipeline Properties:" << std::endl;
+    std::cout << "\tShader Group Handle Size: " << rtProps.shaderGroupHandleSize << " bytes" << std::endl;
+    std::cout << "\tMax Recursion Depth: " << rtProps.maxRayRecursionDepth << std::endl;
 
 }
 
@@ -817,7 +826,7 @@ void BaseRayTracingRenderer::createDescriptorPool(){
 void BaseRayTracingRenderer::createRayTracingDescriptorPool(){
     // set0: tlas, storage image, instance info buffer
     // set1: global uniform, camera uniform, light uniform
-    std::array<VkDescriptorPoolSize, 4> poolSizes{};
+    std::array<VkDescriptorPoolSize, 5> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
     poolSizes[0].descriptorCount = 1; // set0 binding0
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
@@ -826,35 +835,21 @@ void BaseRayTracingRenderer::createRayTracingDescriptorPool(){
     poolSizes[2].descriptorCount = 1; // set0 binding2
     poolSizes[3].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[3].descriptorCount = 3; // set1 binding0/1/2
+    poolSizes[4].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSizes[4].descriptorCount = 1; // full screensampler
+
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT*2; // set0 + set1
+    poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT*(2+1); // set0 + set1 + sampler set
 
     VkResult result = vkCreateDescriptorPool(device, &poolInfo, nullptr, &rayTracingDescriptorPool);
     if(result != VK_SUCCESS){
         throw std::runtime_error("failed to create ray tracing descriptor pool!");
     }
 
-}
-
-void BaseRayTracingRenderer::createSamplerDescriptorPool(){
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
-    VkResult result = vkCreateDescriptorPool(device, &poolInfo, nullptr, &samplerDescriptorPool);
-    if(result != VK_SUCCESS){
-        throw std::runtime_error("failed to create sampler descriptor pool!");
-    }
 }
 
 void BaseRayTracingRenderer::createDescriptorSets(){
@@ -1044,7 +1039,7 @@ void BaseRayTracingRenderer::createSamplerDescriptorSets(){
 
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = samplerDescriptorPool;
+    allocInfo.descriptorPool = rayTracingDescriptorPool; // Reuse the ray tracing descriptor pool
     allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
     allocInfo.pSetLayouts = layouts.data();
 

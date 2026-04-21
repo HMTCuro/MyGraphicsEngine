@@ -15,8 +15,8 @@ struct SceneInfo {
 
 struct RayPayload {
     vec3 color; //HitPayload value
-    // float weight;
-    // int depth;
+    float weight;
+    uint depth;
 }; // HitPayload
 
 struct Vertex{

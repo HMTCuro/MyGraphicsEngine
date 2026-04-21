@@ -126,8 +126,6 @@ private:
 
     VkDescriptorPool rayTracingDescriptorPool;
     std::vector<VkDescriptorSet> rayTracingDescriptorSets;
-
-    VkDescriptorPool samplerDescriptorPool;
     std::vector<VkDescriptorSet> samplerDescriptorSets;
 
     std::vector<std::unique_ptr<BottomLevelAS>> blasCollections;
@@ -182,9 +180,7 @@ private:
     //RT
     void createRayTracingDescriptorSets();
     void createRayTracingDescriptorPool();
-
     void createSamplerDescriptorSets();
-    void createSamplerDescriptorPool();
 
     void createAccelerationStructures(); // Necessary: Create acceleration structures for ray tracing
 

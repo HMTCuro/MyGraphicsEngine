@@ -10,6 +10,7 @@
 #include "shaderUtils.h"
 
 #include <fstream>
+#include <unordered_map>
 
 
 const std::string vshPaths[] = {
@@ -115,6 +116,7 @@ public:
 protected:
     VkDevice device;
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+    std::unordered_map<uint32_t, uint32_t> descriptorPoolCreateFlags;
 
     VkDescriptorSetLayoutBinding createBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t descriptorCount = 1){
         VkDescriptorSetLayoutBinding layoutBinding{};
@@ -398,7 +400,7 @@ public:
         rtPipelineInfo.groupCount = static_cast<uint32_t>(shaderGroups.size());
         rtPipelineInfo.pGroups = shaderGroups.data();
         rtPipelineInfo.layout = pipelineLayout;
-        rtPipelineInfo.maxPipelineRayRecursionDepth = 1;
+        rtPipelineInfo.maxPipelineRayRecursionDepth = 2;
 
         auto fpCreateRayTracingPipelinesKHR = (PFN_vkCreateRayTracingPipelinesKHR)vkGetDeviceProcAddr(pCtx->device, "vkCreateRayTracingPipelinesKHR");
         result = fpCreateRayTracingPipelinesKHR(pCtx->device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rtPipelineInfo, nullptr, &pipeline);

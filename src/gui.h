@@ -126,7 +126,7 @@ public:
         ImGui::Begin("Info");
         ImGui::Text("Hello, Vulkan!");
         ImGui::Text("FPS: %.2f", fps);
-        ImGui::SliderFloat("Light Intensity", &pointlight->intensity, 0.0f, 1.0f);
+        ImGui::SliderFloat("Light Intensity", &pointlight->intensity, 0.0f, 2.0f);
         ImGui::DragFloat3("Light Position", &pointlight->pos.x, 0.1f);
         ImGui::DragFloat3("Camera Position", &cameraParameters->position.x, 0.1f);
         ImGui::DragFloat3("Camera Pitch/Yaw/Roll", &cameraParameters->pitchYawRoll.x, 0.1f);

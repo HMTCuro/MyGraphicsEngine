@@ -158,3 +158,11 @@ const std::array<glm::vec3, 151> directions = {
     glm::vec3 {0.933013, -0.25, 0.258819},
 
 };
+
+const uint32_t AZI_RES = 64;
+const uint32_t ELE_RES = 32; // upper hemisphere only
+
+struct CubeMap{
+    glm::vec3 direction;
+
+};
