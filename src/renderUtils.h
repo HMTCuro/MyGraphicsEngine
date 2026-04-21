@@ -25,7 +25,6 @@ struct ScratchBuffer
 };
 
 // Wraps all data required for an acceleration structure
-
 class RendererContext{
 public:
     VkDevice device= VK_NULL_HANDLE;
@@ -43,6 +42,10 @@ public:
     uint32_t height = 600;  
 };
 
+class RenderUtils{
+public:
+    static uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkPhysicalDevice physicalDevice);
+};
 
 class BufferManager{
 public:
@@ -68,7 +71,7 @@ public:
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+        allocInfo.memoryTypeIndex = RenderUtils::findMemoryType(memRequirements.memoryTypeBits, properties, pCtx->physicalDevice);
 
         if(usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT){
             VkMemoryAllocateFlagsInfo flagsInfo{};
@@ -220,19 +223,6 @@ public:
             vkFreeMemory(pCtx->device, storageBuffer.bufferMemory[i], nullptr);
         }
     }
-
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties){
-        VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(pCtx->physicalDevice, &memProperties);
-
-        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-            if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-                return i;
-            }
-        }
-
-        throw std::runtime_error("failed to find suitable memory type!");
-    }
     
     VkDeviceAddress getBufferDeviceAddress(VkBuffer buffer){ 
         VkBufferDeviceAddressInfo bufferDeviceAddressInfo{};
@@ -244,6 +234,19 @@ public:
     }
 private:
     RendererContext* pCtx;
+};
+
+class ImageFactory{
+public:
+    static void createImage(
+        uint32_t width, uint32_t height, uint32_t mipLevels, 
+        VkSampleCountFlagBits numSamples, VkFormat format, 
+        VkImageTiling tiling, VkImageUsageFlags usage, 
+        VkMemoryPropertyFlags properties, VkImage& image, 
+        VkDeviceMemory& imageMemory, 
+        VkPhysicalDevice physicalDevice, VkDevice device);
+    static VkImageView createImageView(VkImage image, VkFormat format,VkImageAspectFlags aspectFlags, uint32_t miplevels, VkDevice device);
+
 };
 
 // BufferManager Class

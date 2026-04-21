@@ -580,7 +580,7 @@ void BaseRayTracingRenderer::waitIdle(){
 void BaseRayTracingRenderer::createImageViews(){
     swapChainImageViews.resize(swapChainImages.size());
     for(size_t i=0;i<swapChainImages.size();i++){
-        swapChainImageViews[i]=createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT,1);
+        swapChainImageViews[i]=ImageFactory::createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT,1, device);
     }
 }
 
@@ -722,15 +722,15 @@ void BaseRayTracingRenderer::createCommandPool(){
 void BaseRayTracingRenderer::createColorResources(){
     VkFormat colorFormat = swapChainImageFormat;
 
-    createImage(swapChainExtent.width, swapChainExtent.height, 1, VK_SAMPLE_COUNT_1_BIT, colorFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colorImage, colorImageMemory);
-    colorImageView = createImageView(colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+    ImageFactory::createImage(swapChainExtent.width, swapChainExtent.height, 1, VK_SAMPLE_COUNT_1_BIT, colorFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colorImage, colorImageMemory, physicalDevice, device);
+    colorImageView = ImageFactory::createImageView(colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1, device);
 }
 
 void BaseRayTracingRenderer::createDepthResources(){
     VkFormat depthFormat = findDepthFormat();
 
-    createImage(swapChainExtent.width, swapChainExtent.height, 1, VK_SAMPLE_COUNT_1_BIT, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
-    depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+    ImageFactory::createImage(swapChainExtent.width, swapChainExtent.height, 1, VK_SAMPLE_COUNT_1_BIT, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory, physicalDevice, device);
+    depthImageView = ImageFactory::createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1, device);
 }
 
 void BaseRayTracingRenderer::createRTOutResources(){
@@ -742,7 +742,7 @@ void BaseRayTracingRenderer::createRTOutResources(){
         VK_IMAGE_USAGE_TRANSFER_SRC_BIT |     // 拷贝到swapchain
         VK_IMAGE_USAGE_TRANSFER_DST_BIT;      // 如果需要清理图像
 
-    createImage(
+    ImageFactory::createImage(
         swapChainExtent.width, 
         swapChainExtent.height, 
         1, 
@@ -752,8 +752,10 @@ void BaseRayTracingRenderer::createRTOutResources(){
         usageFlags, 
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
         outputImage, 
-        outputImageMemory);
-    outputImageView = createImageView(outputImage, rtOutFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+        outputImageMemory, 
+        physicalDevice, 
+        device);
+    outputImageView = ImageFactory::createImageView(outputImage, rtOutFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1, device);
 
 }
 
@@ -1310,40 +1312,6 @@ void BaseRayTracingRenderer::cleanupSwapChain(){
     vkDestroySwapchainKHR(device, swapChain, nullptr);
 }
 
-void BaseRayTracingRenderer::createComputePipeline(){
-    VkResult result;
-
-    std::vector<char> computeShaderCode = readSpvFile("../shader_spv/comp.spv");
-    VkShaderModule computeShaderModule= createShaderModule(computeShaderCode);
-
-    VkPipelineShaderStageCreateInfo computeShaderStageInfo{};
-    computeShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    computeShaderStageInfo.module = computeShaderModule;
-    computeShaderStageInfo.pName = "main";
-
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &computeDescriptorSetLayout;
-
-    result =vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &computePipelineLayout);
-    if(result != VK_SUCCESS){
-        throw std::runtime_error("failed to create compute pipeline layout!");
-    }
-
-    VkComputePipelineCreateInfo computePipelineInfo{};
-    computePipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    computePipelineInfo.stage = computeShaderStageInfo;
-    computePipelineInfo.layout = computePipelineLayout;
-
-    result = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineInfo, nullptr, &computePipeline);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("failed to create compute pipeline!");
-    }
-
-}
-
 QueueFamilyIndices BaseRayTracingRenderer::findQueueFamilies(VkPhysicalDevice device){
     QueueFamilyIndices indices;
     uint32_t queueFamilyCount=0;
@@ -1386,26 +1354,6 @@ SwapChainSupportDetails BaseRayTracingRenderer::querySwapChainSupport(VkPhysical
     return details;
 }
 
-VkImageView BaseRayTracingRenderer::createImageView(VkImage image, VkFormat format,VkImageAspectFlags aspectFlags, uint32_t miplevels){
-    VkImageViewCreateInfo createInfo{};
-    createInfo.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    createInfo.image=image;
-    createInfo.viewType=VK_IMAGE_VIEW_TYPE_2D;
-    createInfo.format=format;
-    createInfo.subresourceRange.aspectMask=aspectFlags;
-    createInfo.subresourceRange.baseMipLevel=0;
-    createInfo.subresourceRange.levelCount=miplevels;
-    createInfo.subresourceRange.baseArrayLayer=0;
-    createInfo.subresourceRange.layerCount=1;
-
-    VkImageView imageView;
-    VkResult result = vkCreateImageView(device, &createInfo, nullptr, &imageView);
-    if(result != VK_SUCCESS){
-        throw std::runtime_error("failed to create image view!");
-    }
-    return imageView;
-}
-
 VkFormat BaseRayTracingRenderer::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
     for (VkFormat format : candidates) {
         VkFormatProperties props;
@@ -1427,89 +1375,6 @@ VkFormat BaseRayTracingRenderer::findDepthFormat() {
         VK_IMAGE_TILING_OPTIMAL,
         VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
     );
-}
-
-std::vector<char> BaseRayTracingRenderer::readSpvFile(const std::string& filename) {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-    if (!file.is_open()) {
-        throw std::runtime_error("failed to open file!");
-    }
-
-    size_t fileSize = (size_t) file.tellg();
-    std::vector<char> buffer(fileSize);
-
-    file.seekg(0);
-    file.read(buffer.data(), fileSize);
-
-    file.close();
-
-    return buffer;
-}
-
-VkShaderModule BaseRayTracingRenderer::createShaderModule(const std::vector<char>& code) {
-    VkShaderModuleCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = code.size();
-    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-    VkShaderModule shaderModule;
-    VkResult result = vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("failed to create shader module!");
-    }
-
-    return shaderModule;
-}
-
-void BaseRayTracingRenderer::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory) {
-    VkImageCreateInfo imageInfo{};
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent.width = width;
-    imageInfo.extent.height = height;
-    imageInfo.extent.depth = 1;
-    imageInfo.mipLevels = mipLevels;
-    imageInfo.arrayLayers = 1;
-    imageInfo.format = format;
-    imageInfo.tiling = tiling;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.usage = usage;
-    imageInfo.samples = numSamples;
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VkResult result = vkCreateImage(device, &imageInfo, nullptr, &image);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("failed to create image!");
-    }
-
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(device, image, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    result = vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory);
-    if (result != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate image memory!");
-    }
-
-    vkBindImageMemory(device, image, imageMemory, 0);
-}
-
-uint32_t BaseRayTracingRenderer::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-
-    throw std::runtime_error("failed to find suitable memory type!");
 }
 
 void BaseRayTracingRenderer::loadObjects(){ 
@@ -1549,15 +1414,6 @@ void BaseRayTracingRenderer::loadObjects(){
 
     bufferManager.createStorageBuffer(sizeof(InstanceInfo)*instanceAddressInfos.size(), instanceInfoBuffer, instanceAddressInfos.data());
      
-}
-
-VkDeviceAddress BaseRayTracingRenderer::getBufferDeviceAddress(VkBuffer buffer){ 
-    VkBufferDeviceAddressInfo bufferDeviceAddressInfo{};
-    bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    bufferDeviceAddressInfo.buffer = buffer;
-    auto fpGetBufferDeviceAddress = (PFN_vkGetBufferDeviceAddressKHR) vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddressKHR");
-    VkDeviceAddress deviceAddress = fpGetBufferDeviceAddress(device, &bufferDeviceAddressInfo);
-    return deviceAddress;
 }
 
 void BaseRayTracingRenderer::createUniformBuffers() {

@@ -69,9 +69,9 @@ private:
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
-    VkPipeline computePipeline;
-    VkPipelineLayout computePipelineLayout;
-    VkDescriptorSetLayout computeDescriptorSetLayout;
+    // VkPipeline computePipeline;
+    // VkPipelineLayout computePipelineLayout;
+    // VkDescriptorSetLayout computeDescriptorSetLayout;
 
 
     VkImage colorImage;
@@ -219,16 +219,10 @@ private:
     }
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
     SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
-    VkImageView createImageView(VkImage image, VkFormat format,VkImageAspectFlags aspectFlags, uint32_t miplevels=1); // Editable: Create a single image view
+    
     VkFormat findDepthFormat();
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
-    std::vector<char> readSpvFile(const std::string& filename);
-    VkShaderModule createShaderModule(const std::vector<char>& code);
-    void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-
     void loadObjects();
-    VkDeviceAddress getBufferDeviceAddress(VkBuffer buffer);
 
 };
 
