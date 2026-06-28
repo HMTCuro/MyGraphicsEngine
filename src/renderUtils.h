@@ -10,6 +10,10 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <string>
+#include <vector>
+#include <fstream>
+#include <cstdint>
 
 struct InstanceInfo{
     uint64_t  vertexBufferAddress;
@@ -45,6 +49,11 @@ public:
 class RenderUtils{
 public:
     static uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkPhysicalDevice physicalDevice);
+
+    static void createCommandBuffers(RendererContext* pCtx, std::vector<VkCommandBuffer>& commandBuffers, uint32_t commandBufferCount);
+
+    static VkDescriptorSetLayoutBinding createBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t descriptorCount = 1);
+
 };
 
 class BufferManager{
@@ -248,6 +257,21 @@ public:
     static VkImageView createImageView(VkImage image, VkFormat format,VkImageAspectFlags aspectFlags, uint32_t miplevels, VkDevice device);
 
 };
+
+
+// class DescriptorPool{
+// public:
+//     VkDescriptorPool getHandle(){
+//         return descriptorPool;
+//     }
+
+//     void destroy(){
+//         vkDestroyDescriptorPool(pCtx->device, descriptorPool, nullptr);
+//     }
+// private:
+//     RendererContext* pCtx;
+//     VkDescriptorPool descriptorPool;
+// };
 
 // BufferManager Class
 

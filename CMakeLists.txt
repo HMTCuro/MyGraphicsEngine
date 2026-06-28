@@ -29,6 +29,7 @@ file(GLOB SRC_FILES "src/*.cpp")
 
 add_executable(BasicVkRenderer
     ${SRC_FILES}
+    # src/neuralResources.cpp
     # src/main.cpp
     # src/Renderer.cpp
     # src/RayTracingRenderer.cpp
@@ -75,26 +76,61 @@ target_sources(${PROJECT_NAME} PRIVATE
     ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp # 根据你的平台后端调整
 )
 
-# Compile glsl shaders to SPIR-V at build time
+set(SHADER_MAP
+    "shader.vert vert.spv 0"
+    "shader.frag frag.spv 0"
+    "sampler.vert sampler_vert.spv 0"
+    "sampler.frag sampler_frag.spv 0"
+    "miss.rmiss miss.spv 1"
+    "closeHit.rchit closeHit.spv 1"
+    "raygen.rgen raygen.spv 1"
+    "test.comp comp.spv 0"
+)
+set(SHADER_COMMANDS)
+set(SHADER_OUTPUTS)
+foreach(entry ${SHADER_MAP})
+    string(REGEX MATCHALL "[^ ]+" parts "${entry}")
+    list(GET parts 0 SRC_SHADER)
+    list(GET parts 1 SPV_SHADER)
+    list(GET parts 2 IS_RAY_TRACING)
+    set(SRC_PATH "${PROJECT_SOURCE_DIR}/shaders/${SRC_SHADER}")
+    set(SPV_PATH "${PROJECT_SOURCE_DIR}/shader_spv/${SPV_SHADER}")
+    set(COMPILE_COMMAND COMMAND glslc.exe "${SRC_PATH}" -o "${SPV_PATH}")
+    if(IS_RAY_TRACING)
+        list(APPEND COMPILE_COMMAND -I "${PROJECT_SOURCE_DIR}/shaders" --target-spv=spv1.4)
+    endif()
+    list(APPEND SHADER_COMMANDS ${COMPILE_COMMAND})
+    list(APPEND SHADER_OUTPUTS ${SPV_PATH})
+endforeach()
+
 add_custom_target(Shaders ALL
-    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/shader.vert -o ${PROJECT_SOURCE_DIR}/shader_spv/vert.spv
-    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/shader.frag -o ${PROJECT_SOURCE_DIR}/shader_spv/frag.spv
-    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/sampler.vert -o ${PROJECT_SOURCE_DIR}/shader_spv/sampler_vert.spv
-    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/sampler.frag -o ${PROJECT_SOURCE_DIR}/shader_spv/sampler_frag.spv
-    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/miss.rmiss -o ${PROJECT_SOURCE_DIR}/shader_spv/miss.spv -I ${PROJECT_SOURCE_DIR}/shaders --target-spv=spv1.4
-    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/closeHit.rchit -o ${PROJECT_SOURCE_DIR}/shader_spv/closeHit.spv -I ${PROJECT_SOURCE_DIR}/shaders --target-spv=spv1.4
-    COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/raygen.rgen -o ${PROJECT_SOURCE_DIR}/shader_spv/raygen.spv -I ${PROJECT_SOURCE_DIR}/shaders --target-spv=spv1.4
-    BYPRODUCTS
-        ${PROJECT_SOURCE_DIR}/shader_spv/vert.spv
-        ${PROJECT_SOURCE_DIR}/shader_spv/frag.spv
-        ${PROJECT_SOURCE_DIR}/shader_spv/sampler_vert.spv
-        ${PROJECT_SOURCE_DIR}/shader_spv/sampler_frag.spv
-        ${PROJECT_SOURCE_DIR}/shader_spv/miss.spv
-        ${PROJECT_SOURCE_DIR}/shader_spv/closeHit.spv
-        ${PROJECT_SOURCE_DIR}/shader_spv/raygen.spv
+    ${SHADER_COMMANDS}
+    BYPRODUCTS ${SHADER_OUTPUTS}
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/shader_spv
     COMMENT "Compiling GLSL shaders to SPIR-V"
 )
+
+# Compile glsl shaders to SPIR-V at build time
+# add_custom_target(Shaders ALL
+#     COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/shader.vert -o ${PROJECT_SOURCE_DIR}/shader_spv/vert.spv
+#     COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/shader.frag -o ${PROJECT_SOURCE_DIR}/shader_spv/frag.spv
+#     COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/sampler.vert -o ${PROJECT_SOURCE_DIR}/shader_spv/sampler_vert.spv
+#     COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/sampler.frag -o ${PROJECT_SOURCE_DIR}/shader_spv/sampler_frag.spv
+#     COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/miss.rmiss -o ${PROJECT_SOURCE_DIR}/shader_spv/miss.spv -I ${PROJECT_SOURCE_DIR}/shaders --target-spv=spv1.4
+#     COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/closeHit.rchit -o ${PROJECT_SOURCE_DIR}/shader_spv/closeHit.spv -I ${PROJECT_SOURCE_DIR}/shaders --target-spv=spv1.4
+#     COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/raygen.rgen -o ${PROJECT_SOURCE_DIR}/shader_spv/raygen.spv -I ${PROJECT_SOURCE_DIR}/shaders --target-spv=spv1.4
+#     COMMAND glslc.exe ${PROJECT_SOURCE_DIR}/shaders/test.comp -o ${PROJECT_SOURCE_DIR}/shader_spv/comp.spv
+#     BYPRODUCTS
+#         ${PROJECT_SOURCE_DIR}/shader_spv/vert.spv
+#         ${PROJECT_SOURCE_DIR}/shader_spv/frag.spv
+#         ${PROJECT_SOURCE_DIR}/shader_spv/sampler_vert.spv
+#         ${PROJECT_SOURCE_DIR}/shader_spv/sampler_frag.spv
+#         ${PROJECT_SOURCE_DIR}/shader_spv/miss.spv
+#         ${PROJECT_SOURCE_DIR}/shader_spv/closeHit.spv
+#         ${PROJECT_SOURCE_DIR}/shader_spv/raygen.spv
+#     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/shader_spv
+#     COMMENT "Compiling GLSL shaders to SPIR-V"
+# )
 
 add_dependencies(BasicVkRenderer Shaders)
 

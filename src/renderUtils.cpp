@@ -13,6 +13,29 @@ uint32_t RenderUtils::findMemoryType(uint32_t typeFilter,VkMemoryPropertyFlags p
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
+void RenderUtils::createCommandBuffers(RendererContext* pCtx, std::vector<VkCommandBuffer>& commandBuffers, uint32_t commandBufferCount){
+    commandBuffers.resize(commandBufferCount);
+
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = pCtx->commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = commandBufferCount;
+
+    if (vkAllocateCommandBuffers(pCtx->device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate command buffers!");
+    }
+}
+
+VkDescriptorSetLayoutBinding RenderUtils::createBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t descriptorCount){
+    VkDescriptorSetLayoutBinding layoutBinding{};
+    layoutBinding.binding = binding;
+    layoutBinding.descriptorType = type;
+    layoutBinding.descriptorCount = descriptorCount;
+    layoutBinding.stageFlags = stageFlags;
+    return layoutBinding;
+}
+
 
 void ImageFactory::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory, VkPhysicalDevice physicalDevice, VkDevice device) {
     VkImageCreateInfo imageInfo{};

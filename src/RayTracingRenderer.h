@@ -4,9 +4,13 @@
 #include "pipeline.h"
 #include "accelerationStructure.h"
 #include "gui.h"
+#include "renderUtils.h"
+#include "neuralResources.h"
 
 #include <memory>
 #include <map>
+
+
 
 const std::vector<const char*> rayTracingDeviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -134,15 +138,13 @@ private:
     VkBuffer rayTracingShaderBindingTableBuffer;
     VkDeviceMemory rayTracingShaderBindingTableBufferMemory;
 
-    
 
     WhiteModelPipeline1 whiteModelPipeline;
-    WhiteModelDescriptorSetLayoutBundle whiteModelDescriptorSetLayoutBundle;
+    DescriptorSetLayoutBundle whiteModelDescriptorSetLayoutBundle;
     RayTracingPipeline rayTracingPipeline;
-    RayTracingDescriptorSetLayoutBundle rayTracingDescriptorSetLayoutBundle;
+    DescriptorSetLayoutBundle rayTracingDescriptorSetLayoutBundle;
     TextureSamplerPipeline samplerPipeline;
-    TextureSamplerDescriptorSetLayoutBundle samplerDescriptorSetLayoutBundle;
-
+    DescriptorSetLayoutBundle samplerDescriptorSetLayoutBundle;
 
     VkImage outputImage;
     VkDeviceMemory outputImageMemory;
@@ -223,6 +225,6 @@ private:
     VkFormat findDepthFormat();
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
     void loadObjects();
-
+    void loadMaterialData();
 };
 

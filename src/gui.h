@@ -60,15 +60,12 @@ public:
 
         ImGui_ImplVulkan_Init(&init_info);
 
-        createCommandBuffers();
+        // createCommandBuffers();
+        RenderUtils::createCommandBuffers(pCtx, commandBuffers, pCtx->MAX_FRAMES_IN_FLIGHT);
         createSyncObjects();
-
     // createTextureSampler();
     // createUniformBuffers();
-
     // createDescriptorSets();
-
-
     }
 
     void render(uint32_t imageIndex, VkExtent2D extent,uint32_t currentFrame,
@@ -196,9 +193,9 @@ public:
         for (size_t i = 0; i < uiFramebuffers.size(); i++) {
             vkDestroyFramebuffer(pCtx->device, uiFramebuffers[i], nullptr);
         }
-        for(size_t i = 0; i < commandBuffers.size(); i++){
-            vkFreeCommandBuffers(pCtx->device, commandPool, 1, &commandBuffers[i]);
-        }
+        // for(size_t i = 0; i < commandBuffers.size(); i++){
+        //     vkFreeCommandBuffers(pCtx->device, commandPool, 1, &commandBuffers[i]);
+        // }
         vkDestroyDescriptorPool(pCtx->device, descriptorPool, nullptr);
         vkDestroyCommandPool(pCtx->device, commandPool, nullptr);
         vkDestroyRenderPass(pCtx->device, renderPass, nullptr);
@@ -228,9 +225,6 @@ public:
             }
         }
     }
-
-    
-
 private:
     RendererContext* pCtx;
     WindowContext* pWindowCtx;
@@ -238,7 +232,6 @@ private:
     uint32_t framesAccumulated = 0;
     float fps = 0.0f;
     std::chrono::high_resolution_clock::time_point timeStamp0;
-
 
     //ubo
     PointLight* pointlight;
@@ -333,21 +326,6 @@ private:
         }
     }
 
-    void createCommandBuffers(){
-        commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = (uint32_t) commandBuffers.size();
-
-        VkResult result = vkAllocateCommandBuffers(pCtx->device, &allocInfo, commandBuffers.data());
-        if(result != VK_SUCCESS){
-            throw std::runtime_error("failed to allocate command buffers!");
-        }
-    }
-
     void createSyncObjects(){
         guiAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
 
@@ -360,6 +338,7 @@ private:
             }
         }
     }
+    
     uint32_t findGraphicsQueueFamilies(){
         int32_t index=-1;
         uint32_t queueFamilyCount=0;

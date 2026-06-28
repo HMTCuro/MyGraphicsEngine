@@ -28,6 +28,7 @@ void BaseRayTracingRenderer::initVulkan() {
     //     createTextureImageView();
     createTextureSampler();
     loadObjects();
+    loadMaterialData();
     createAccelerationStructures();
   
     createUniformBuffers();
@@ -38,7 +39,8 @@ void BaseRayTracingRenderer::initVulkan() {
     createRayTracingDescriptorSets();
     createSamplerDescriptorSets();
 
-    createCommandBuffers();
+    // createCommandBuffers();
+    RenderUtils::createCommandBuffers(&ctx, commandBuffers, MAX_FRAMES_IN_FLIGHT);
     createSyncObjects();
     std::cout << "Vulkan Initialized" << std::endl;
 
@@ -72,12 +74,7 @@ void BaseRayTracingRenderer::drawFrame() {
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
-
-
-
     gui.render(imageIndex, swapChainExtent, currentFrame, swapChainImages[imageIndex]);
-
-
 
     VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
@@ -650,13 +647,13 @@ void BaseRayTracingRenderer::createRenderPass(){
 
 void BaseRayTracingRenderer::createDescriptorSetLayout(){
     whiteModelDescriptorSetLayoutBundle.setProperties(device);
-    whiteModelDescriptorSetLayoutBundle.createDescriptorSetLayout();
+    whiteModelDescriptorSetLayoutBundle.createDescriptorSetLayoutFromConfig(whiteModelDescriptorSetLayoutConfigs);
 
     rayTracingDescriptorSetLayoutBundle.setProperties(device);
-    rayTracingDescriptorSetLayoutBundle.createDescriptorSetLayout();
+    rayTracingDescriptorSetLayoutBundle.createDescriptorSetLayoutFromConfig(rayTracingDescriptorSetLayoutConfigs);
 
     samplerDescriptorSetLayoutBundle.setProperties(device);
-    samplerDescriptorSetLayoutBundle.createDescriptorSetLayout();
+    samplerDescriptorSetLayoutBundle.createDescriptorSetLayoutFromConfig(samplerDescriptorSetLayoutConfigs);
 }
 
 void BaseRayTracingRenderer::createAccelerationStructures(){
@@ -834,7 +831,7 @@ void BaseRayTracingRenderer::createRayTracingDescriptorPool(){
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     poolSizes[1].descriptorCount = 1; // set0 binding1
     poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    poolSizes[2].descriptorCount = 1; // set0 binding2
+    poolSizes[2].descriptorCount = 2; // set0 binding2
     poolSizes[3].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[3].descriptorCount = 3; // set1 binding0/1/2
     poolSizes[4].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1072,21 +1069,6 @@ void BaseRayTracingRenderer::createSamplerDescriptorSets(){
     }
 }
 
-void BaseRayTracingRenderer::createCommandBuffers(){
-    commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = commandPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = (uint32_t) commandBuffers.size();
-
-    VkResult result = vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data());
-    if(result != VK_SUCCESS){
-        throw std::runtime_error("failed to allocate command buffers!");
-    }
-}
-
 void BaseRayTracingRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex){
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1097,8 +1079,6 @@ void BaseRayTracingRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, 
     if(result != VK_SUCCESS){
         throw std::runtime_error("failed to begin recording command buffer!");
     }
-
-
 
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -1413,7 +1393,13 @@ void BaseRayTracingRenderer::loadObjects(){
     }
 
     bufferManager.createStorageBuffer(sizeof(InstanceInfo)*instanceAddressInfos.size(), instanceInfoBuffer, instanceAddressInfos.data());
-     
+    
+}
+
+void BaseRayTracingRenderer::loadMaterialData(){
+    NeuralBinaryData materialData;
+    std::string neuralBinaryPath = "../assets/test.neuralbin";
+    materialData.load(neuralBinaryPath);
 }
 
 void BaseRayTracingRenderer::createUniformBuffers() {

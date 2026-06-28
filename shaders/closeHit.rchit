@@ -5,6 +5,7 @@
 #extension GL_EXT_buffer_reference2 : require
 
 #include "rayTracingUtils.glsl"
+// #include "neuralCore.glsl"
 
 layout(binding = 0, set = 0) uniform accelerationStructureEXT tlas;
 
