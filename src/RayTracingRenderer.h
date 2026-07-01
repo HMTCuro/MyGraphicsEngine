@@ -10,8 +10,6 @@
 #include <memory>
 #include <map>
 
-
-
 const std::vector<const char*> rayTracingDeviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
@@ -36,7 +34,6 @@ public:
 
     void waitIdle();
     void setFramebufferResizeCallback();
-
 private:
     // Example variables
     std::vector<Mesh*> meshes{
@@ -73,9 +70,6 @@ private:
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
-    // VkPipeline computePipeline;
-    // VkPipelineLayout computePipelineLayout;
-    // VkDescriptorSetLayout computeDescriptorSetLayout;
 
 
     VkImage colorImage;

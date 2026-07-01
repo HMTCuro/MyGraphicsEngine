@@ -1,5 +1,6 @@
 #include "renderUtils.h"
 
+// ----------------------------RenderUtils Implementation----------------------------
 uint32_t RenderUtils::findMemoryType(uint32_t typeFilter,VkMemoryPropertyFlags properties, VkPhysicalDevice physicalDevice){
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
@@ -36,7 +37,27 @@ VkDescriptorSetLayoutBinding RenderUtils::createBinding(uint32_t binding, VkDesc
     return layoutBinding;
 }
 
+std::vector<VkDescriptorPoolSize> RenderUtils::combineDescriptorPoolSizes(const std::vector<std::vector<VkDescriptorPoolSize>>& sizes) {
+    std::unordered_map<VkDescriptorType, uint32_t> combinedMap;
 
+    for (const auto& sizeList : sizes) {
+        for (const auto& size : sizeList) {
+            combinedMap[size.type] += size.descriptorCount;
+        }
+    }
+
+    std::vector<VkDescriptorPoolSize> combinedSizes;
+    for (const auto& pair : combinedMap) {
+        VkDescriptorPoolSize poolSize{};
+        poolSize.type = pair.first;
+        poolSize.descriptorCount = pair.second;
+        combinedSizes.push_back(poolSize);
+    }
+
+    return combinedSizes;
+}
+
+// ----------------------------ImageFactory Implementation----------------------------
 void ImageFactory::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory, VkPhysicalDevice physicalDevice, VkDevice device) {
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -94,3 +115,71 @@ VkImageView ImageFactory::createImageView(VkImage image, VkFormat format,VkImage
     return imageView;
 }
 
+void DescriptorWriteCollector::addBuffer(VkDescriptorSet dstSet, uint32_t binding, VkDescriptorType type, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range, uint32_t arrayElement) {
+    VkDescriptorBufferInfo info{};
+    info.buffer = buffer;
+    info.offset = offset;
+    info.range  = range;
+    bufferInfos.push_back(info);
+
+    VkWriteDescriptorSet write{};
+    write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.dstSet          = dstSet;
+    write.dstBinding      = binding;
+    write.dstArrayElement = arrayElement;
+    write.descriptorCount = 1;
+    write.descriptorType  = type;
+    write.pBufferInfo     = &bufferInfos.back();
+    writes.push_back(write);
+}
+
+void DescriptorWriteCollector::addImage(VkDescriptorSet dstSet,
+                uint32_t binding,
+                VkDescriptorType type,         // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE / COMBINED_IMAGE_SAMPLER
+                VkImageView imageView,
+                VkImageLayout imageLayout,
+                VkSampler sampler,
+                uint32_t arrayElement)
+{
+    VkDescriptorImageInfo info{};
+    info.sampler     = sampler;
+    info.imageView   = imageView;
+    info.imageLayout = imageLayout;
+    imageInfos.push_back(info);
+
+    VkWriteDescriptorSet write{};
+    write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.dstSet          = dstSet;
+    write.dstBinding      = binding;
+    write.dstArrayElement = arrayElement;
+    write.descriptorCount = 1;
+    write.descriptorType  = type;
+    write.pImageInfo      = &imageInfos.back();
+    writes.push_back(write);
+}
+
+void DescriptorWriteCollector::addAccelerationStructures(VkDescriptorSet dstSet,
+                                   uint32_t binding,
+                                   const std::vector<VkAccelerationStructureKHR>& handles,
+                                   uint32_t arrayElement)
+{
+    // 保存 handles 的副本，并记录此次写入的偏移
+    size_t offset = asHandles.size();
+    asHandles.insert(asHandles.end(), handles.begin(), handles.end());
+
+    VkWriteDescriptorSetAccelerationStructureKHR asExt{};
+    asExt.sType                      = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+    asExt.accelerationStructureCount = static_cast<uint32_t>(handles.size());
+    asExt.pAccelerationStructures    = &asHandles[offset];   // 指向稳定存储
+    asExtensions.push_back(asExt);
+
+    VkWriteDescriptorSet write{};
+    write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.pNext           = &asExtensions.back();
+    write.dstSet          = dstSet;
+    write.dstBinding      = binding;
+    write.dstArrayElement = arrayElement;
+    write.descriptorCount = 1;
+    write.descriptorType  = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+    writes.push_back(write);
+}

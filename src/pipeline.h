@@ -1,5 +1,7 @@
 #pragma once
 
+#define SAMPLER_TEST
+
 #include <vulkan/vulkan.h>
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE 
@@ -71,6 +73,7 @@ const std::vector<std::vector<VkDescriptorSetLayoutBinding>> rayTracingDescripto
     }
 };
 
+#ifndef SAMPLER_TEST
 const std::vector<std::vector<VkDescriptorSetLayoutBinding>> samplerDescriptorSetLayoutConfigs = {
     {
         RenderUtils::createBinding(
@@ -80,6 +83,17 @@ const std::vector<std::vector<VkDescriptorSetLayoutBinding>> samplerDescriptorSe
         )
     }
 };
+#else
+const std::vector<std::vector<VkDescriptorSetLayoutBinding>> samplerDescriptorSetLayoutConfigs = {
+    {
+        RenderUtils::createBinding(
+            0, 
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 
+            VK_SHADER_STAGE_ALL
+        )
+    }
+};
+#endif
 
 const std::vector<std::vector<VkDescriptorSetLayoutBinding>> whiteModelDescriptorSetLayoutConfigs = {
     {
@@ -168,65 +182,14 @@ protected:
 
 };
 
-class BaseDescriptorSetLayoutBundle{
-public:
-    std::vector<VkDescriptorSetLayout> getHandle(){
-        return descriptorSetLayouts;
-    }
-    uint32_t getCount(){
-        return static_cast<uint32_t>(descriptorSetLayouts.size());
-    }
-    void setProperties(VkDevice device){
-        this->device = device;
-    }
-
-    virtual void createDescriptorSetLayout() = 0;
-
-    void createDescriptorSetLayoutFromConfig(const std::vector<std::vector<VkDescriptorSetLayoutBinding>>& layoutConfigs){
-        for(const auto& bindings : layoutConfigs){
-            addLayout(bindings);
-        }
-    }
-
-    void destroyDescriptorSetLayout() {
-        for (const auto& descriptorSetLayout : descriptorSetLayouts) {
-            vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
-        }
-    }
-protected:
-    VkDevice device;
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
-    std::unordered_map<uint32_t, uint32_t> descriptorPoolCreateFlags;
-
-    VkDescriptorSetLayoutBinding createBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t descriptorCount = 1){
-        VkDescriptorSetLayoutBinding layoutBinding{};
-        layoutBinding.binding = binding;
-        layoutBinding.descriptorType = type;
-        layoutBinding.descriptorCount = descriptorCount;
-        layoutBinding.stageFlags = stageFlags;
-        return layoutBinding;
-    }
-    void addLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings){
-        std::vector<VkDescriptorSetLayoutBinding> layoutBindings = bindings;
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
-        layoutInfo.pBindings = layoutBindings.data();
-
-        VkDescriptorSetLayout descriptorSetLayout;
-        VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error("failed to create descriptor set layout!");
-        }
-        descriptorSetLayouts.push_back(descriptorSetLayout);
-    }
-};
-
 class DescriptorSetLayoutBundle{
 public:
     std::vector<VkDescriptorSetLayout> getHandle(){
         return descriptorSetLayouts;
     }
+    std::vector<VkDescriptorPoolSize> getPoolSizes(){
+        return poolSizes;
+    }
     uint32_t getCount(){
         return static_cast<uint32_t>(descriptorSetLayouts.size());
     }
@@ -248,16 +211,8 @@ public:
 protected:
     VkDevice device;
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
-    std::unordered_map<uint32_t, uint32_t> descriptorPoolCreateFlags;
+    std::vector<VkDescriptorPoolSize> poolSizes;
 
-    VkDescriptorSetLayoutBinding createBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t descriptorCount = 1){
-        VkDescriptorSetLayoutBinding layoutBinding{};
-        layoutBinding.binding = binding;
-        layoutBinding.descriptorType = type;
-        layoutBinding.descriptorCount = descriptorCount;
-        layoutBinding.stageFlags = stageFlags;
-        return layoutBinding;
-    }
     void addLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings){
         std::vector<VkDescriptorSetLayoutBinding> layoutBindings = bindings;
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
@@ -271,6 +226,23 @@ protected:
             throw std::runtime_error("failed to create descriptor set layout!");
         }
         descriptorSetLayouts.push_back(descriptorSetLayout);
+
+        for (const auto& binding : layoutBindings) {
+            updatePoolSizes(binding);
+        }
+    }
+
+    void updatePoolSizes(const VkDescriptorSetLayoutBinding& binding){
+        for (auto& poolSize : poolSizes) {
+            if (poolSize.type == binding.descriptorType) {
+                poolSize.descriptorCount += binding.descriptorCount;
+                return;
+            }
+        }
+        VkDescriptorPoolSize newPoolSize{};
+        newPoolSize.type = binding.descriptorType;
+        newPoolSize.descriptorCount = binding.descriptorCount;
+        poolSizes.push_back(newPoolSize);
     }
 };
 
@@ -605,6 +577,7 @@ private:
     }
 };
 
+#ifndef SAMPLER_TEST
 class TextureSamplerPipeline: public BasePipeline{
 public:
     void createPipeline() override {
@@ -736,6 +709,140 @@ public:
         vkDestroyShaderModule(pCtx->device, vertShaderModule, nullptr);
     }
 };
+#else
+class TextureSamplerPipeline: public BasePipeline{
+public:
+    void createPipeline() override {
+        // 1. 读取全屏顶点和片元着色器
+        VkShaderModule vertShaderModule=ShaderFactory::CreateShaderModuleFromFile(pCtx->device, vshPaths[1]);
+        VkShaderModule fragShaderModule=ShaderFactory::CreateShaderModuleFromFile(pCtx->device, fshPaths[1]);
+
+        VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+        vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+        vertShaderStageInfo.module = vertShaderModule;
+        vertShaderStageInfo.pName = "main";
+
+        VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+        fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragShaderStageInfo.module = fragShaderModule;
+        fragShaderStageInfo.pName = "main";
+
+        VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+
+        // 2. 顶点输入：全屏quad可以不需要顶点buffer，直接在shader里生成顶点
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = 0;
+        vertexInputInfo.pVertexBindingDescriptions = nullptr;
+        vertexInputInfo.vertexAttributeDescriptionCount = 0;
+        vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+
+        // 3. 装配方式：三角形
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+        inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+        // 4. 视口和裁剪
+        VkPipelineViewportStateCreateInfo viewportState{};
+        viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewportState.viewportCount = 1;
+        viewportState.scissorCount = 1;
+
+        // 5. 光栅化：正面朝外，关闭背面剔除（全屏quad不需要剔除）
+        VkPipelineRasterizationStateCreateInfo rasterizer{};
+        rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterizer.depthClampEnable = VK_FALSE;
+        rasterizer.rasterizerDiscardEnable = VK_FALSE;
+        rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+        rasterizer.lineWidth = 1.0f;
+        rasterizer.cullMode = VK_CULL_MODE_NONE;
+        rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterizer.depthBiasEnable = VK_FALSE;
+
+        // 6. 关闭多重采样
+        VkPipelineMultisampleStateCreateInfo multisampling{};
+        multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisampling.sampleShadingEnable = VK_FALSE;
+        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+        // 7. 关闭深度测试
+        VkPipelineDepthStencilStateCreateInfo depthStencil{};
+        depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depthStencil.depthTestEnable = VK_FALSE;
+        depthStencil.depthWriteEnable = VK_FALSE;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+        depthStencil.depthBoundsTestEnable = VK_FALSE;
+        depthStencil.stencilTestEnable = VK_FALSE;
+
+        // 8. 颜色混合
+        VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_FALSE;
+
+        VkPipelineColorBlendStateCreateInfo colorBlending{};
+        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        colorBlending.logicOpEnable = VK_FALSE;
+        colorBlending.attachmentCount = 1;
+        colorBlending.pAttachments = &colorBlendAttachment;
+        colorBlending.blendConstants[0] = 0.0f;
+        colorBlending.blendConstants[1] = 0.0f;
+        colorBlending.blendConstants[2] = 0.0f;
+        colorBlending.blendConstants[3] = 0.0f;
+
+        // 9. 动态状态
+        std::vector<VkDynamicState> dynamicStates = {
+            VK_DYNAMIC_STATE_VIEWPORT,
+            VK_DYNAMIC_STATE_SCISSOR
+        };
+
+        VkPipelineDynamicStateCreateInfo dynamicState{};
+        dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+        dynamicState.pDynamicStates = dynamicStates.data();
+
+        // 10. 管线布局
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size());
+        pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
+
+        VkResult result = vkCreatePipelineLayout(pCtx->device, &pipelineLayoutInfo, nullptr, &pipelineLayout);
+        if(result != VK_SUCCESS){
+            throw std::runtime_error("failed to create pipeline layout!");
+        }
+
+        // 11. 创建图形管线
+        VkGraphicsPipelineCreateInfo pipelineInfo{};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineInfo.stageCount = 2;
+        pipelineInfo.pStages = shaderStages;
+        pipelineInfo.pVertexInputState = &vertexInputInfo;
+        pipelineInfo.pInputAssemblyState = &inputAssembly;
+        pipelineInfo.pViewportState = &viewportState;
+        pipelineInfo.pRasterizationState = &rasterizer;
+        pipelineInfo.pMultisampleState = &multisampling;
+        pipelineInfo.pDepthStencilState = &depthStencil;
+        pipelineInfo.pColorBlendState = &colorBlending;
+        pipelineInfo.pDynamicState = &dynamicState;
+        pipelineInfo.layout = pipelineLayout;
+        pipelineInfo.renderPass = renderPass;
+        pipelineInfo.subpass = 0;
+        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+
+        VkResult result1 = vkCreateGraphicsPipelines(pCtx->device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline);
+        if (result1 != VK_SUCCESS) {
+            throw std::runtime_error("failed to create graphics pipeline!");
+        }
+
+        vkDestroyShaderModule(pCtx->device, fragShaderModule, nullptr);
+        vkDestroyShaderModule(pCtx->device, vertShaderModule, nullptr);
+    }
+};
+#endif
+
 
 class ComputePipeline: public BasePipeline{
 public:
@@ -773,17 +880,19 @@ public:
     }
 };
 
-class ComputeDescriptorSetLayoutBundle: public BaseDescriptorSetLayoutBundle{
-public:
-    void createDescriptorSetLayout() override {
-        // Implementation of compute descriptor set layout creation goes here
-        std::vector<VkDescriptorSetLayoutBinding> set0Bindings;
 
-        set0Bindings.push_back(createBinding(
-            0, 
-            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
-            VK_SHADER_STAGE_COMPUTE_BIT));
+
+// class ComputeDescriptorSetLayoutBundle: public BaseDescriptorSetLayoutBundle{
+// public:
+//     void createDescriptorSetLayout() override {
+//         // Implementation of compute descriptor set layout creation goes here
+//         std::vector<VkDescriptorSetLayoutBinding> set0Bindings;
+
+//         set0Bindings.push_back(createBinding(
+//             0, 
+//             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+//             VK_SHADER_STAGE_COMPUTE_BIT));
         
-        addLayout(set0Bindings);
-    }
-};
+//         addLayout(set0Bindings);
+//     }
+// };

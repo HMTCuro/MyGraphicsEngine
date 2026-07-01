@@ -825,24 +825,19 @@ void BaseRayTracingRenderer::createDescriptorPool(){
 void BaseRayTracingRenderer::createRayTracingDescriptorPool(){
     // set0: tlas, storage image, instance info buffer
     // set1: global uniform, camera uniform, light uniform
-    std::array<VkDescriptorPoolSize, 5> poolSizes{};
-    poolSizes[0].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-    poolSizes[0].descriptorCount = 1; // set0 binding0
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    poolSizes[1].descriptorCount = 1; // set0 binding1
-    poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    poolSizes[2].descriptorCount = 2; // set0 binding2
-    poolSizes[3].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[3].descriptorCount = 3; // set1 binding0/1/2
-    poolSizes[4].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[4].descriptorCount = 1; // full screensampler
+    std::vector<std::vector<VkDescriptorPoolSize>> poolSizes={
+        rayTracingDescriptorSetLayoutBundle.getPoolSizes(),
+        samplerDescriptorSetLayoutBundle.getPoolSizes()
+    };
+    std::vector<VkDescriptorPoolSize> combinedPoolSizes=RenderUtils::combineDescriptorPoolSizes(poolSizes);
 
+    uint32_t descriptorSetCount = rayTracingDescriptorSetLayoutBundle.getCount() + samplerDescriptorSetLayoutBundle.getCount();
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-    poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT*(2+1); // set0 + set1 + sampler set
+    poolInfo.poolSizeCount = static_cast<uint32_t>(combinedPoolSizes.size());
+    poolInfo.pPoolSizes = combinedPoolSizes.data();
+    poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT*(descriptorSetCount); // set0 + set1 + sampler set
 
     VkResult result = vkCreateDescriptorPool(device, &poolInfo, nullptr, &rayTracingDescriptorPool);
     if(result != VK_SUCCESS){
@@ -939,96 +934,63 @@ void BaseRayTracingRenderer::createRayTracingDescriptorSets(){
         throw std::runtime_error("failed to allocate ray tracing descriptor sets!");
     }
     std::cout << "Ray tracing descriptor sets allocated successfully!" << std::endl;
+
+    DescriptorWriteCollector* writeCollector=new DescriptorWriteCollector();
+    std::vector<VkAccelerationStructureKHR> asHandles;
+    for(auto& tlas: tlasCollections){
+        asHandles.push_back(tlas->getHandle().handle);
+    }
     for(uint32_t i=0;i<MAX_FRAMES_IN_FLIGHT;i++){
-        VkWriteDescriptorSetAccelerationStructureKHR asWrite{};
-        asWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
-        std::vector<VkAccelerationStructureKHR> asHandles;
-        for(auto& tlas: tlasCollections){
-            asHandles.push_back(tlas->getHandle().handle);
-        }
-        asWrite.accelerationStructureCount = static_cast<uint32_t>(asHandles.size());
-        asWrite.pAccelerationStructures = asHandles.data();
-
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-        imageInfo.imageView = outputImageView;
-        imageInfo.sampler = VK_NULL_HANDLE;
-
-        VkDescriptorBufferInfo instanceBufferInfo{};
-        instanceBufferInfo.buffer = instanceInfoBuffer.buffer[i];
-        instanceBufferInfo.offset = 0;
-        instanceBufferInfo.range = sizeof(InstanceInfo) * meshInstances.size();
-
-        VkDescriptorBufferInfo uboInfo0{};
-        uboInfo0.buffer = globalInfo.uniformBuffer.buffer[i];
-        uboInfo0.offset = 0;
-        uboInfo0.range = sizeof(globalInfo.data);
-
-        VkDescriptorBufferInfo uboInfo1{};
-        uboInfo1.buffer = camera.uniformBuffer.buffer[i];
-        uboInfo1.offset = 0;
-        uboInfo1.range = sizeof(camera.data);
-
-        VkDescriptorBufferInfo uboInfo2{};
-        uboInfo2.buffer = pointLight.uniformBuffer.buffer[i];
-        uboInfo2.offset = 0;
-        uboInfo2.range = sizeof(pointLight.data);
-
-
         uint32_t offset = i*rayTracingDescriptorSetLayoutBundle.getCount();
-        std::array<VkWriteDescriptorSet,6> descriptorWrites{};
-        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = rayTracingDescriptorSets[offset + 0]; // set0
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].dstArrayElement = 0;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].pNext = &asWrite;
-
-        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = rayTracingDescriptorSets[offset + 0]; 
-        descriptorWrites[1].dstBinding = 1;
-        descriptorWrites[1].dstArrayElement = 0;
-        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        descriptorWrites[1].descriptorCount = 1;
-        descriptorWrites[1].pImageInfo = &imageInfo;
-
-        descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[2].dstSet = rayTracingDescriptorSets[offset + 0]; 
-        descriptorWrites[2].dstBinding = 2;
-        descriptorWrites[2].dstArrayElement = 0;
-        descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        descriptorWrites[2].descriptorCount = 1;
-        descriptorWrites[2].pBufferInfo = &instanceBufferInfo;
-
-        descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[3].dstSet = rayTracingDescriptorSets[offset + 1]; // set1
-        descriptorWrites[3].dstBinding = 0;
-        descriptorWrites[3].dstArrayElement = 0;
-        descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrites[3].descriptorCount = 1;
-        descriptorWrites[3].pBufferInfo = &uboInfo0;
-
-        descriptorWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[4].dstSet = rayTracingDescriptorSets[offset + 1];
-        descriptorWrites[4].dstBinding = 1;
-        descriptorWrites[4].dstArrayElement = 0;
-        descriptorWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrites[4].descriptorCount = 1;
-        descriptorWrites[4].pBufferInfo = &uboInfo1;
-
-        descriptorWrites[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[5].dstSet = rayTracingDescriptorSets[offset + 1];
-        descriptorWrites[5].dstBinding = 2;
-        descriptorWrites[5].dstArrayElement = 0;
-        descriptorWrites[5].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrites[5].descriptorCount = 1;
-        descriptorWrites[5].pBufferInfo = &uboInfo2;
-        std::cout << "Updating ray tracing descriptor sets for frame " << i << std::endl;
-        vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
-        std::cout << "Ray tracing descriptor sets updated for frame " << i << std::endl;
+        writeCollector->addAccelerationStructures(
+            rayTracingDescriptorSets[offset+0],
+            0,
+            asHandles
+        );
+        writeCollector->addImage(
+            rayTracingDescriptorSets[offset+0],
+            1,
+            VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            outputImageView,
+            VK_IMAGE_LAYOUT_GENERAL
+        );
+        writeCollector->addBuffer(
+            rayTracingDescriptorSets[offset+0],
+            2,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            instanceInfoBuffer.buffer[i],
+            0,
+            sizeof(InstanceInfo) * meshInstances.size()
+        );
+        writeCollector->addBuffer(
+            rayTracingDescriptorSets[offset+1],
+            0,
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            globalInfo.uniformBuffer.buffer[i],
+            0,
+            sizeof(globalInfo.data)
+        );
+        writeCollector->addBuffer(
+            rayTracingDescriptorSets[offset+1],
+            1,
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            camera.uniformBuffer.buffer[i],
+            0,
+            sizeof(camera.data)
+        );
+        writeCollector->addBuffer(
+            rayTracingDescriptorSets[offset+1],
+            2,
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            pointLight.uniformBuffer.buffer[i],
+            0,
+            sizeof(pointLight.data)
+        );
+        writeCollector->update(device);
+        writeCollector->reset();
     }
     std::cout << "Ray tracing descriptor sets created and updated successfully!" << std::endl;
+    delete writeCollector;
 }
 
 void BaseRayTracingRenderer::createSamplerDescriptorSets(){
@@ -1049,24 +1011,20 @@ void BaseRayTracingRenderer::createSamplerDescriptorSets(){
         throw std::runtime_error("failed to allocate sampler descriptor sets!");
     }
 
+    DescriptorWriteCollector* writeCollector=new DescriptorWriteCollector();
     for(size_t i=0;i<MAX_FRAMES_IN_FLIGHT;i++){
-        // if using texture
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // outputImage will be sampled, so use SHADER_READ_ONLY_OPTIMAL
-        imageInfo.imageView = outputImageView;
-        imageInfo.sampler = textureSampler;
-
-        std::array<VkWriteDescriptorSet,1> descriptorWrites{};
-        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = samplerDescriptorSets[i];
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].dstArrayElement = 0;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].pImageInfo = &imageInfo;
-
-        vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+        writeCollector->addImage(
+            samplerDescriptorSets[i],
+            0,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            outputImageView,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            textureSampler
+        );
+        writeCollector->update(device);
+        writeCollector->reset();
     }
+    delete writeCollector;
 }
 
 void BaseRayTracingRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex){

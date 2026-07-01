@@ -1,5 +1,6 @@
 #include <neuralResources.h>
 
+// ----------------------------NeuralBinaryData Implementation----------------------------
 void NeuralBinaryData::load(const std::string& filepath) {
     std::ifstream file(filepath, std::ios::binary);
     if (!file) {

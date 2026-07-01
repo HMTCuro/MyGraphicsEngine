@@ -54,6 +54,7 @@ public:
 
     static VkDescriptorSetLayoutBinding createBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t descriptorCount = 1);
 
+    static std::vector<VkDescriptorPoolSize> combineDescriptorPoolSizes(const std::vector<std::vector<VkDescriptorPoolSize>>& sizes);
 };
 
 class BufferManager{
@@ -254,8 +255,68 @@ public:
         VkMemoryPropertyFlags properties, VkImage& image, 
         VkDeviceMemory& imageMemory, 
         VkPhysicalDevice physicalDevice, VkDevice device);
+
     static VkImageView createImageView(VkImage image, VkFormat format,VkImageAspectFlags aspectFlags, uint32_t miplevels, VkDevice device);
 
+};
+
+class DescriptorWriteCollector {
+public:
+    // 添加一个 Buffer 绑定
+    void addBuffer(VkDescriptorSet dstSet,
+                   uint32_t binding,
+                   VkDescriptorType type,         // VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER / STORAGE_BUFFER
+                   VkBuffer buffer,
+                   VkDeviceSize offset,
+                   VkDeviceSize range,
+                   uint32_t arrayElement = 0);
+    // 添加一个 Image 绑定
+    void addImage(VkDescriptorSet dstSet,
+                  uint32_t binding,
+                  VkDescriptorType type,         // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE / COMBINED_IMAGE_SAMPLER
+                  VkImageView imageView,
+                  VkImageLayout imageLayout,
+                  VkSampler sampler = VK_NULL_HANDLE,
+                  uint32_t arrayElement = 0);
+
+    // 添加一组 Acceleration Structure 绑定（通常对 TLAS）
+    void addAccelerationStructures(VkDescriptorSet dstSet,
+                                   uint32_t binding,
+                                   const std::vector<VkAccelerationStructureKHR>& handles,
+                                   uint32_t arrayElement = 0);
+
+    // 单 TLAS 的便捷重载
+    void addAccelerationStructure(VkDescriptorSet dstSet,
+                                  uint32_t binding,
+                                  VkAccelerationStructureKHR tlas,
+                                  uint32_t arrayElement = 0)
+    {
+        addAccelerationStructures(dstSet, binding, {tlas}, arrayElement);
+    }
+
+    // 提交所有累积的写入
+    void update(VkDevice device) {
+        vkUpdateDescriptorSets(device, 
+                               static_cast<uint32_t>(writes.size()), 
+                               writes.data(), 
+                               0, nullptr);
+    }
+
+    // 清空，以便复用于下一帧（可选）
+    void reset() {
+        writes.clear();
+        bufferInfos.clear();
+        imageInfos.clear();
+        asExtensions.clear();
+        asHandles.clear();
+    }
+
+private:
+    std::vector<VkWriteDescriptorSet> writes;
+    std::vector<VkDescriptorBufferInfo> bufferInfos;
+    std::vector<VkDescriptorImageInfo> imageInfos;
+    std::vector<VkWriteDescriptorSetAccelerationStructureKHR> asExtensions;
+    std::vector<VkAccelerationStructureKHR> asHandles;
 };
 
 
