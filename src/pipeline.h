@@ -1,6 +1,6 @@
 #pragma once
 
-#define SAMPLER_TEST
+// #define SAMPLER_TEST
 
 #include <vulkan/vulkan.h>
 
@@ -77,8 +77,8 @@ const std::vector<std::vector<VkDescriptorSetLayoutBinding>> rayTracingDescripto
 const std::vector<std::vector<VkDescriptorSetLayoutBinding>> samplerDescriptorSetLayoutConfigs = {
     {
         RenderUtils::createBinding(
-            0, 
-            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 
+            0,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             VK_SHADER_STAGE_ALL
         )
     }
@@ -87,8 +87,23 @@ const std::vector<std::vector<VkDescriptorSetLayoutBinding>> samplerDescriptorSe
 const std::vector<std::vector<VkDescriptorSetLayoutBinding>> samplerDescriptorSetLayoutConfigs = {
     {
         RenderUtils::createBinding(
-            0, 
-            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 
+            0,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            VK_SHADER_STAGE_ALL
+        ),
+        RenderUtils::createBinding(
+            1,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            VK_SHADER_STAGE_ALL
+        ),
+        RenderUtils::createBinding(
+            2,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            VK_SHADER_STAGE_ALL
+        ),
+        RenderUtils::createBinding(
+            3,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             VK_SHADER_STAGE_ALL
         )
     }

@@ -146,6 +146,19 @@ private:
 
     VkSampler textureSampler;
 
+    // Neural network weight buffer (debug: used by sampler.frag)
+    VkBuffer neuralWeightBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory neuralWeightBufferMemory = VK_NULL_HANDLE;
+
+    // NeuTex textures (from tex.levels.0.tex [1,7,400,400])
+    VkImage neuralTexRGBAImage = VK_NULL_HANDLE;
+    VkDeviceMemory neuralTexRGBAImageMemory = VK_NULL_HANDLE;
+    VkImageView neuralTexRGBAImageView = VK_NULL_HANDLE;
+    VkImage neuralTexRGBImage = VK_NULL_HANDLE;
+    VkDeviceMemory neuralTexRGBImageMemory = VK_NULL_HANDLE;
+    VkImageView neuralTexRGBImageView = VK_NULL_HANDLE;
+    VkSampler neuralTextureSampler = VK_NULL_HANDLE;
+
     CustomGUI gui;
 
     // Core functions

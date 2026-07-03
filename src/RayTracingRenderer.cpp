@@ -184,6 +184,20 @@ void BaseRayTracingRenderer::cleanupVulkan() {
 
     bufferManager.destroyStorageBuffers(instanceInfoBuffer);
 
+#ifdef SAMPLER_TEST
+    if (neuralWeightBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device, neuralWeightBuffer, nullptr);
+        vkFreeMemory(device, neuralWeightBufferMemory, nullptr);
+    }
+    vkDestroySampler(device, neuralTextureSampler, nullptr);
+    vkDestroyImageView(device, neuralTexRGBAImageView, nullptr);
+    vkDestroyImage(device, neuralTexRGBAImage, nullptr);
+    vkFreeMemory(device, neuralTexRGBAImageMemory, nullptr);
+    vkDestroyImageView(device, neuralTexRGBImageView, nullptr);
+    vkDestroyImage(device, neuralTexRGBImage, nullptr);
+    vkFreeMemory(device, neuralTexRGBImageMemory, nullptr);
+#endif
+
 
     for(auto& mesh: meshes){
         vkDestroyBuffer(device, mesh->vertexBuffer, nullptr);
@@ -1021,6 +1035,24 @@ void BaseRayTracingRenderer::createSamplerDescriptorSets(){
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             textureSampler
         );
+#ifdef SAMPLER_TEST
+        writeCollector->addBuffer(
+            samplerDescriptorSets[i], 1,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            neuralWeightBuffer, 0, VK_WHOLE_SIZE);
+        writeCollector->addImage(
+            samplerDescriptorSets[i], 2,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            neuralTexRGBAImageView,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            neuralTextureSampler);
+        writeCollector->addImage(
+            samplerDescriptorSets[i], 3,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            neuralTexRGBImageView,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            neuralTextureSampler);
+#endif
         writeCollector->update(device);
         writeCollector->reset();
     }
@@ -1355,9 +1387,113 @@ void BaseRayTracingRenderer::loadObjects(){
 }
 
 void BaseRayTracingRenderer::loadMaterialData(){
+#ifdef SAMPLER_TEST
     NeuralBinaryData materialData;
-    std::string neuralBinaryPath = "../assets/test.neuralbin";
-    materialData.load(neuralBinaryPath);
+    materialData.load("../assets/test.neuralbin");
+
+    // 定位 net.* 张量范围（包含所有 bias 和 weight）
+    const auto* firstNet = materialData.findTensor("net.net.0.linear.bias");
+    const auto* lastNet = materialData.findTensor("net.net.3.weight");
+    if (!firstNet || !lastNet) {
+        throw std::runtime_error("Failed to find net.* tensors in .neuralbin!");
+    }
+
+    uint64_t startFloatIdx = firstNet->offset;
+    uint64_t endFloatIdx = lastNet->offset + lastNet->numElements;
+    VkDeviceSize wtSize = (endFloatIdx - startFloatIdx) * sizeof(float);
+
+    std::cout << "Neural weights: " << (endFloatIdx - startFloatIdx)
+              << " floats (" << wtSize << " bytes)" << std::endl;
+
+    bufferManager.createBuffer(wtSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        neuralWeightBuffer, neuralWeightBufferMemory);
+    void* data;
+    vkMapMemory(device, neuralWeightBufferMemory, 0, wtSize, 0, &data);
+    memcpy(data, materialData.getDataPtr() + startFloatIdx, wtSize);
+    vkUnmapMemory(device, neuralWeightBufferMemory);
+
+    // ---- 创建 NeuTex 纹理 (tex.levels.0.tex [1,7,400,400]) ----
+    const float* texData = materialData.getTensorData("tex.levels.0.tex");
+    if (!texData) {
+        throw std::runtime_error("Failed to find tex.levels.0.tex in .neuralbin!");
+    }
+    constexpr int TEX_W = 400, TEX_H = 400;
+    int slice = TEX_W * TEX_H;
+
+    auto createNeuralTexture = [this, texData, slice](int chBase, int chCount,
+            float alphaVal, VkImage& outImg, VkDeviceMemory& outMem, VkImageView& outView) {
+        VkDeviceSize imgSize = TEX_W * TEX_H * 4 * sizeof(float);
+        VkBuffer stagingBuf; VkDeviceMemory stagingMem;
+        bufferManager.createBuffer(imgSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            stagingBuf, stagingMem);
+        void* mapped; vkMapMemory(device, stagingMem, 0, imgSize, 0, &mapped);
+        float* pixels = (float*)mapped;
+        for (int y = 0; y < TEX_H; ++y)
+            for (int x = 0; x < TEX_W; ++x) {
+                int dst = (y * TEX_W + x) * 4;
+                for (int c = 0; c < chCount; ++c)
+                    pixels[dst + c] = texData[(chBase + c) * slice + y * TEX_W + x];
+                pixels[dst + 3] = (chCount >= 4) ? texData[(chBase + 3) * slice + y * TEX_W + x] : alphaVal;
+            }
+        vkUnmapMemory(device, stagingMem);
+
+        ImageFactory::createImage(TEX_W, TEX_H, 1, VK_SAMPLE_COUNT_1_BIT,
+            VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outImg, outMem, physicalDevice, device);
+
+        VkCommandBuffer cmdBuf = bufferManager.beginSingleTimeCommands();
+        VkImageMemoryBarrier b{};
+        b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        b.image = outImg;
+        b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        b.subresourceRange.levelCount = b.subresourceRange.layerCount = 1;
+        b.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        vkCmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+
+        VkBufferImageCopy c{};
+        c.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        c.imageSubresource.layerCount = 1;
+        c.imageExtent = { TEX_W, TEX_H, 1 };
+        vkCmdCopyBufferToImage(cmdBuf, stagingBuf, outImg,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
+
+        b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(cmdBuf, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+        bufferManager.endSingleTimeCommands(cmdBuf);
+
+        outView = ImageFactory::createImageView(outImg, VK_FORMAT_R32G32B32A32_SFLOAT,
+            VK_IMAGE_ASPECT_COLOR_BIT, 1, device);
+        vkDestroyBuffer(device, stagingBuf, nullptr);
+        vkFreeMemory(device, stagingMem, nullptr);
+    };
+    createNeuralTexture(0, 4, 0.0f, neuralTexRGBAImage, neuralTexRGBAImageMemory, neuralTexRGBAImageView);
+    createNeuralTexture(4, 3, 1.0f, neuralTexRGBImage, neuralTexRGBImageMemory, neuralTexRGBImageView);
+
+    VkSamplerCreateInfo sampInfo{};
+    sampInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampInfo.magFilter = VK_FILTER_LINEAR;
+    sampInfo.minFilter = VK_FILTER_LINEAR;
+    sampInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampInfo.anisotropyEnable = VK_FALSE;
+    sampInfo.maxLod = 0.0f;
+    if (vkCreateSampler(device, &sampInfo, nullptr, &neuralTextureSampler) != VK_SUCCESS)
+        throw std::runtime_error("Failed to create neural texture sampler!");
+    std::cout << "Neural debug: weights + textures loaded" << std::endl;
+#else
+    std::cout << "Neural debug disabled (SAMPLER_TEST not defined)" << std::endl;
+#endif
 }
 
 void BaseRayTracingRenderer::createUniformBuffers() {
