@@ -55,6 +55,21 @@ public:
     static VkDescriptorSetLayoutBinding createBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t descriptorCount = 1);
 
     static std::vector<VkDescriptorPoolSize> combineDescriptorPoolSizes(const std::vector<std::vector<VkDescriptorPoolSize>>& sizes);
+
+    // 设置全屏视口和裁剪区域
+    static void setViewportAndScissor(VkCommandBuffer commandBuffer, const VkExtent2D& extent);
+
+    // 图像布局转换（封装 VkImageMemoryBarrier + vkCmdPipelineBarrier）
+    static void transitionImageLayout(
+        VkCommandBuffer commandBuffer,
+        VkImage image,
+        VkImageLayout oldLayout,
+        VkImageLayout newLayout,
+        VkAccessFlags srcAccessMask,
+        VkAccessFlags dstAccessMask,
+        VkPipelineStageFlags srcStage,
+        VkPipelineStageFlags dstStage);
+
 };
 
 class BufferManager{
@@ -294,22 +309,11 @@ public:
         addAccelerationStructures(dstSet, binding, {tlas}, arrayElement);
     }
 
-    // 提交所有累积的写入
-    void update(VkDevice device) {
-        vkUpdateDescriptorSets(device, 
-                               static_cast<uint32_t>(writes.size()), 
-                               writes.data(), 
-                               0, nullptr);
-    }
+    // 提交所有累积的写入（先修复指针，再调用 vkUpdateDescriptorSets）
+    void update(VkDevice device);
 
     // 清空，以便复用于下一帧（可选）
-    void reset() {
-        writes.clear();
-        bufferInfos.clear();
-        imageInfos.clear();
-        asExtensions.clear();
-        asHandles.clear();
-    }
+    void reset();
 
 private:
     std::vector<VkWriteDescriptorSet> writes;
@@ -317,6 +321,15 @@ private:
     std::vector<VkDescriptorImageInfo> imageInfos;
     std::vector<VkWriteDescriptorSetAccelerationStructureKHR> asExtensions;
     std::vector<VkAccelerationStructureKHR> asHandles;
+
+    // 修复信息：add* 时只存索引，update() 时 vector 已稳定，再计算最终指针
+    enum class InfoType { NONE, BUFFER, IMAGE, AS_EXT };
+    struct WriteFixup {
+        InfoType type{InfoType::NONE};
+        size_t index{0};
+        size_t asHandlesOffset{0};  // 仅 AS_EXT：在 asHandles 中的偏移
+    };
+    std::vector<WriteFixup> writeFixups;
 };
 
 

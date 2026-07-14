@@ -22,13 +22,17 @@ include_directories(
     "src/include"
     "shaders"
     "src/third_party/stb_image"
+    "src/third_party/nlohmann"
     ${GLFW_INCLUDE_DIR}
+    "src/rtMaterial"
 )
 
 file(GLOB SRC_FILES "src/*.cpp")
+file(GLOB RTMATERIAL_FILES "src/rtMaterial/*.cpp")
 
 add_executable(BasicVkRenderer
     ${SRC_FILES}
+    ${RTMATERIAL_FILES}
     # src/neuralResources.cpp
     # src/main.cpp
     # src/Renderer.cpp
@@ -85,6 +89,7 @@ set(SHADER_MAP
     "closeHit.rchit closeHit.spv 1"
     "raygen.rgen raygen.spv 1"
     "test.comp comp.spv 0"
+    "leather.rchit leather.spv 1"
 )
 set(SHADER_COMMANDS)
 set(SHADER_OUTPUTS)

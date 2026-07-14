@@ -9,6 +9,8 @@
 
 #include <memory>
 #include <map>
+#include <unordered_map>
+#include <string>
 
 const std::vector<const char*> rayTracingDeviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -159,7 +161,14 @@ private:
     VkImageView neuralTexRGBImageView = VK_NULL_HANDLE;
     VkSampler neuralTextureSampler = VK_NULL_HANDLE;
 
+    
     CustomGUI gui;
+
+    struct FunctionHandles{
+        PFN_vkCmdTraceRaysKHR fpCmdTraceRaysKHR = nullptr;
+    };
+
+    FunctionHandles functionHandles;
 
     // Core functions
     void createInstance(); // Necessary: Create Vulkan instance
@@ -184,6 +193,11 @@ private:
 
         bufferManager.init(&ctx);
         asManager.init(&ctx, &bufferManager);
+
+        functionHandles.fpCmdTraceRaysKHR = (PFN_vkCmdTraceRaysKHR)vkGetDeviceProcAddr(device, "vkCmdTraceRaysKHR");
+        if (!functionHandles.fpCmdTraceRaysKHR) {
+            throw std::runtime_error("Failed to load vkCmdTraceRaysKHR function pointer.");
+        }
     }
     void createGraphicsPipeline(); // Pipeline: Create graphics pipeline
     //RT

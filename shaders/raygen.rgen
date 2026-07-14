@@ -36,24 +36,39 @@ void main() {
         prd.color = g.clear_color;
         prd.depth = 0;
         prd.weight = 1.0f;
+        prd.origin = camera.pos;
+        prd.direction = view_direction;
         // prd.color = vec3(1.0f, 1.0f, 1.0f);
-
-        traceRayEXT(
-            tlas, // Acceleration structure
-            ray_flags, // Ray tracing flags
-            0xff, // Cull mask (which geometry to consider)
-            0, 0, // SBT offsets and strides (for shader binding table)
-            0, // Miss shader index (if no hit, which miss shader to execute)
-            camera.pos, // Ray origin
-            0.001, // Minimum ray distance (to avoid self-intersection)
-            view_direction, // Ray direction
-            10000.0, // Maximum ray distance
-            0 // Payload location (where to store the hit result, corresponds to RayPayload struct
-        );
-        // prd.color = vec3(1.0f, 1.0f, 1.0f);
-        hit_value += prd.color;
-        view_direction_debug = view_direction;
+        for(int j=0;j<4;j++){
+            traceRayEXT(
+                tlas,
+                ray_flags,
+                0xff,
+                0,0,
+                0,
+                prd.origin,
+                0.001,
+                prd.direction,
+                10000.0,
+                0
+            );
+            hit_value += prd.color;
+        }
+        // traceRayEXT(
+        //     tlas, // Acceleration structure
+        //     ray_flags, // Ray tracing flags
+        //     0xff, // Cull mask (which geometry to consider)
+        //     0, 0, // SBT offsets and strides (for shader binding table)
+        //     0, // Miss shader index (if no hit, which miss shader to execute)
+        //     camera.pos, // Ray origin
+        //     0.001, // Minimum ray distance (to avoid self-intersection)
+        //     view_direction, // Ray direction
+        //     10000.0, // Maximum ray distance
+        //     0 // Payload location (where to store the hit result, corresponds to RayPayload struct
+        // );
+        // // prd.color = vec3(1.0f, 1.0f, 1.0f);
+        // hit_value += prd.color;
     }
-    // imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(view_direction_debug / g.scale, 1.0));
+    
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hit_value / g.scale, 1.0));
 }

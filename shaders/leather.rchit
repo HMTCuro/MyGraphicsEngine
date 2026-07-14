@@ -22,6 +22,15 @@ layout(binding=2,set=1) uniform Light_{
     float intensity;
 } light;
 
+// layout(binding=0,set=2) uniform TexInfo_{
+//     uint textureIndex;
+//     uint normalMapIndex;
+//     uint roughnessMapIndex;
+// }
+
+// layout(binding=1,set=2) uniform sampler2D textures[];
+
+
 
 layout(buffer_reference,scalar) buffer Vertices{
     Vertex vertices[];
@@ -31,6 +40,8 @@ layout(buffer_reference,scalar) buffer Indices{
 };
 
 hitAttributeEXT vec3 attributes;
+
+#include "neuralCore.glsl"
 
 void main() {
     InstanceInfo info = info_.infos[gl_InstanceCustomIndexEXT];
@@ -43,6 +54,7 @@ void main() {
     Vertex v1 = vertices.vertices[idxs.y];
     Vertex v2 = vertices.vertices[idxs.z];
 
+    vec3 lastOrigin = payload.origin;
     vec3 pos = v0.pos * W.x + v1.pos * W.y + v2.pos * W.z;
     vec3 normal = v0.normal * W.x + v1.normal * W.y + v2.normal * W.z;
     mat4 model = info.modelMatrix;
@@ -66,15 +78,19 @@ void main() {
         L_D,
         1
     );
-    payload.color = max(dot(L, normal), 0) * light.color * light.intensity / L_D / L_D;
     // payload.color = max(dot(L, normal), 0) * light.color * light.intensity / L_D / L_D;
-    // payload.color = pos;
+    vec2 uv=v0.color.xy * W.x + v1.color.xy * W.y + v2.color.xy * W.z;
+    payload.color = evalNeuralBRDF(uv, L, normalize(lastOrigin - pos));
+    payload.color*=light.intensity / L_D / L_D;
+    // vec3 wi = normalize(vec3(0.5, 1.0, 0.3));
+    // vec3 wo = normalize(vec3(uv * 2.0 - 1.0, 0.5));
 
+    // payload.color = evalNeuralBRDF(uv, wi, wo);
+    // payload.color =vec3(uv,0.5);
     if (isShadow) {
         payload.color *= 0.3f;
         // payload.color = vec3(1.0f, 1.0f, 1.0f);
     }    
-    payload.color.r*=1.2f;
 
 
     payload.depth += 1;
@@ -82,4 +98,5 @@ void main() {
     payload.direction = reflect(payload.direction, normal);
     payload.color*=payload.weight;
     payload.weight *= 0.2f;
+
 }

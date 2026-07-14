@@ -70,6 +70,36 @@ const std::vector<std::vector<VkDescriptorSetLayoutBinding>> rayTracingDescripto
             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 
             VK_SHADER_STAGE_ALL
         )
+    },
+    {
+        RenderUtils::createBinding(
+            0, 
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 
+            VK_SHADER_STAGE_ALL
+        ), //Texture info: index,...
+        RenderUtils::createBinding(
+            1, 
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            VK_SHADER_STAGE_ALL,
+            2
+        ), //Texture data
+    },
+    {
+        RenderUtils::createBinding(
+            0, 
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 
+            VK_SHADER_STAGE_ALL
+        ),
+        RenderUtils::createBinding(
+            1, 
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 
+            VK_SHADER_STAGE_ALL
+        ),
+        RenderUtils::createBinding(
+            2, 
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 
+            VK_SHADER_STAGE_ALL
+        )
     }
 };
 
@@ -125,44 +155,6 @@ const std::vector<std::vector<VkDescriptorSetLayoutBinding>> whiteModelDescripto
     }
 };
 
-class ShaderBindingTable{
-public:
-    enum SBTRegionType{
-        eRAYGEN,
-        eMISS,
-        eHIT,
-        eRegionCount
-    };
-    std::vector<VkBuffer> buffers;
-    std::vector<VkDeviceMemory> bufferMemories;
-
-    ShaderBindingTable(RendererContext* ctx, BufferManager* BufferManager){
-        this->pCtx = ctx;
-        this->pBufferManager = BufferManager;
-    }
-
-    void createSBTBuffers(){
-        VkBufferUsageFlags usage = VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR |
-        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-
-        buffers.resize(SBTRegionType::eRegionCount);
-        bufferMemories.resize(SBTRegionType::eRegionCount);
-
-        // for(size_t i=0;i<SBTRegionType::eRegionCount;i++){
-        //     pBufferManager->createBuffer(
-        //         sbtRegionSizes[i], usage, 
-        //         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
-        //         buffers[i], bufferMemories[i]);
-        // }
-// allocator.createBuffer(sbtBuffer, bufferSize, usage, 
-//                       VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
-//                       VMA_ALLOCATION_CREATE_MAPPED_BIT,
-//                       sbtGenerator.getBufferAlignment());
-    }
-private:
-    RendererContext* pCtx;
-    BufferManager* pBufferManager;
-};
 
 class BasePipeline{
 public:
@@ -409,59 +401,66 @@ public:
         // Implementation of ray tracing pipeline creation goes here
         std::cout << "--------Creating Ray Tracing Pipeline---------" << std::endl;
         VkResult result;
-
-        VkShaderModule rayGenShaderModule = ShaderFactory::CreateShaderModuleFromFile(pCtx->device, "../shader_spv/raygen.spv");
-        VkShaderModule missShaderModule = ShaderFactory::CreateShaderModuleFromFile(pCtx->device, "../shader_spv/miss.spv");
-        VkShaderModule hitShaderModule = ShaderFactory::CreateShaderModuleFromFile(pCtx->device, "../shader_spv/closeHit.spv");
-
         enum StageIndices {
             eRaygen,
             eMiss,
             eClosestHit,
+            eLetherChit,
             eShaderGroupCount
         };
+        std::array<VkShaderModule,eShaderGroupCount> shaderModules = {
+            ShaderFactory::CreateShaderModuleFromFile(pCtx->device, "../shader_spv/raygen.spv"),
+            ShaderFactory::CreateShaderModuleFromFile(pCtx->device, "../shader_spv/miss.spv"),
+            ShaderFactory::CreateShaderModuleFromFile(pCtx->device, "../shader_spv/closeHit.spv"),
+            ShaderFactory::CreateShaderModuleFromFile(pCtx->device, "../shader_spv/leather.spv")
+        };
 
-        VkPipelineShaderStageCreateInfo rayGenShaderStageInfo{};
-        rayGenShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        rayGenShaderStageInfo.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-        rayGenShaderStageInfo.module = rayGenShaderModule;
-        rayGenShaderStageInfo.pName = "main";
+        std::array<VkPipelineShaderStageCreateInfo, eShaderGroupCount> shaderStages = { 
+            ShaderFactory::CreateShaderStageInfo(
+                VK_SHADER_STAGE_RAYGEN_BIT_KHR, 
+                shaderModules[eRaygen], 
+                "main"),
+            ShaderFactory::CreateShaderStageInfo(
+                VK_SHADER_STAGE_MISS_BIT_KHR,
+                shaderModules[eMiss],
+                "main"),
+            ShaderFactory::CreateShaderStageInfo(
+                VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+                shaderModules[eClosestHit],
+                "main"),
+            ShaderFactory::CreateShaderStageInfo(
+                VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+                shaderModules[eLetherChit],
+                "main")
+        };
 
-        VkPipelineShaderStageCreateInfo missShaderStageInfo{};
-        missShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        missShaderStageInfo.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
-        missShaderStageInfo.module = missShaderModule;
-        missShaderStageInfo.pName = "main";
+        std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups={
+            ShaderFactory::CreateRTShaderGroup(
+                VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+                eRaygen, 
+                VK_SHADER_UNUSED_KHR, 
+                VK_SHADER_UNUSED_KHR, 
+                VK_SHADER_UNUSED_KHR),
+            ShaderFactory::CreateRTShaderGroup(
+                VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+                eMiss, 
+                VK_SHADER_UNUSED_KHR, 
+                VK_SHADER_UNUSED_KHR, 
+                VK_SHADER_UNUSED_KHR),
+            ShaderFactory::CreateRTShaderGroup(
+                VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR,
+                VK_SHADER_UNUSED_KHR, 
+                eClosestHit, 
+                VK_SHADER_UNUSED_KHR, 
+                VK_SHADER_UNUSED_KHR),
+            ShaderFactory::CreateRTShaderGroup(
+                VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR,
+                VK_SHADER_UNUSED_KHR, 
+                eLetherChit,
+                VK_SHADER_UNUSED_KHR,
+                VK_SHADER_UNUSED_KHR)
 
-        VkPipelineShaderStageCreateInfo hitShaderStageInfo{};
-        hitShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        hitShaderStageInfo.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-        hitShaderStageInfo.module = hitShaderModule;
-        hitShaderStageInfo.pName = "main";
-
-        std::array<VkPipelineShaderStageCreateInfo, eShaderGroupCount> shaderStages = { rayGenShaderStageInfo, missShaderStageInfo, hitShaderStageInfo };
-
-        VkRayTracingShaderGroupCreateInfoKHR group{};
-        group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-        group.anyHitShader = VK_SHADER_UNUSED_KHR;
-        group.closestHitShader = VK_SHADER_UNUSED_KHR;
-        group.generalShader = VK_SHADER_UNUSED_KHR;
-        group.intersectionShader = VK_SHADER_UNUSED_KHR;
-
-        std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups;
-
-        group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-        group.generalShader = eRaygen;
-        shaderGroups.push_back(group);
-
-        group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-        group.generalShader = eMiss;
-        shaderGroups.push_back(group);
-
-        group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
-        group.closestHitShader = eClosestHit;
-        group.generalShader = VK_SHADER_UNUSED_KHR;
-        shaderGroups.push_back(group);
+        };
 
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -487,9 +486,9 @@ public:
             throw std::runtime_error("failed to create ray tracing pipeline!");
         }
 
-        vkDestroyShaderModule(pCtx->device, rayGenShaderModule, nullptr);
-        vkDestroyShaderModule(pCtx->device, missShaderModule, nullptr);
-        vkDestroyShaderModule(pCtx->device, hitShaderModule, nullptr);
+        for (const auto& shaderModule : shaderModules) {
+            vkDestroyShaderModule(pCtx->device, shaderModule, nullptr);
+        }
 
         createShaderBindingTable(rtPipelineInfo);
     }
@@ -537,10 +536,12 @@ private:
         };
 
 
-        uint32_t raygenSize   = alignUp(handleSize, handleAlignment);
-        uint32_t missSize     = alignUp(handleSize, handleAlignment);
-        uint32_t hitSize      = alignUp(handleSize, handleAlignment);
-        uint32_t callableSize = 0;  // No callable shaders in this tutorial
+        uint32_t raygenSize     = alignUp(handleSize, handleAlignment);
+        uint32_t missSize       = alignUp(handleSize, handleAlignment);
+        uint32_t hitHandleSize  = alignUp(handleSize, handleAlignment);   // One shader group handle per entry
+        uint32_t hitStride      = hitHandleSize;                          // Stride between hit group entries
+        uint32_t hitSize        = hitStride * 2;                          // Two hit groups
+        uint32_t callableSize   = 0;  // No callable shaders in this tutorial
 
         // Ensure each region starts at a baseAlignment boundary
         uint32_t raygenOffset   = 0;
@@ -576,10 +577,12 @@ private:
         missRegion.size          = missSize;
 
 
-        // Hit shader (group 2)
+        // Hit shader group 2 (closeHit)
         memcpy(pData + hitOffset, shaderHandles.data() + 2 * handleSize, handleSize);
+        // Hit shader group 3 (leather)
+        memcpy(pData + hitOffset + hitStride, shaderHandles.data() + 3 * handleSize, handleSize);
         hitRegion.deviceAddress = bufferManager->getBufferDeviceAddress(sbtBuffer) + hitOffset;
-        hitRegion.stride        = hitSize;
+        hitRegion.stride        = hitStride;
         hitRegion.size          = hitSize;
 
         // Callable shaders (none in this tutorial)
@@ -894,7 +897,6 @@ public:
         vkDestroyShaderModule(pCtx->device, computeShaderModule, nullptr);
     }
 };
-
 
 
 // class ComputeDescriptorSetLayoutBundle: public BaseDescriptorSetLayoutBundle{

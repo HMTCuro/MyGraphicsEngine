@@ -184,7 +184,7 @@ void BaseRayTracingRenderer::cleanupVulkan() {
 
     bufferManager.destroyStorageBuffers(instanceInfoBuffer);
 
-#ifdef SAMPLER_TEST
+// #ifdef SAMPLER_TEST
     if (neuralWeightBuffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(device, neuralWeightBuffer, nullptr);
         vkFreeMemory(device, neuralWeightBufferMemory, nullptr);
@@ -196,7 +196,7 @@ void BaseRayTracingRenderer::cleanupVulkan() {
     vkDestroyImageView(device, neuralTexRGBImageView, nullptr);
     vkDestroyImage(device, neuralTexRGBImage, nullptr);
     vkFreeMemory(device, neuralTexRGBImageMemory, nullptr);
-#endif
+// #endif
 
 
     for(auto& mesh: meshes){
@@ -686,15 +686,20 @@ void BaseRayTracingRenderer::createAccelerationStructures(){
     for(auto &instance: meshInstances){
         // Create TLAS instance for each mesh instance
         AccelerationStructure handle = blasCollections[instance.mesh->id].get()->getHandle();
+        // Assign different hit shader groups:
+        //   instanceID 0 → hit group 0 (closeHit)
+        //   instanceID 1 → hit group 1 (leather)
+        uint32_t sbtOffset = instanceID;  // Use instance index to select hit group
         VkAccelerationStructureInstanceKHR tlasInstance = asManager.createTLASInstance(
             instance.getModelMatrix(),
-            instanceID++,
+            instanceID,
             0xFF,
-            0,
+            sbtOffset,
             VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
             handle
         );
         tlasInstances.push_back(tlasInstance);
+        instanceID++;
     }
 
     auto tmpTlas = std::make_unique<TopLevelAS>();
@@ -1000,6 +1005,23 @@ void BaseRayTracingRenderer::createRayTracingDescriptorSets(){
             0,
             sizeof(pointLight.data)
         );
+        writeCollector->addBuffer(
+            rayTracingDescriptorSets[offset+3], 0,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            neuralWeightBuffer, 0, VK_WHOLE_SIZE);
+        writeCollector->addImage(
+            rayTracingDescriptorSets[offset+3], 1,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            neuralTexRGBAImageView,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            neuralTextureSampler);
+        writeCollector->addImage(
+            rayTracingDescriptorSets[offset+3], 2,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            neuralTexRGBImageView,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            neuralTextureSampler);
+        
         writeCollector->update(device);
         writeCollector->reset();
     }
@@ -1087,34 +1109,14 @@ void BaseRayTracingRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, 
 
     bool useRayTracingPipeline = true; // Set to true to use ray tracing pipeline, false for traditional rasterization
     if(useRayTracingPipeline){
-        VkImageMemoryBarrier barrierToGeneral = {};
-        barrierToGeneral.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrierToGeneral.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        barrierToGeneral.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        barrierToGeneral.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrierToGeneral.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrierToGeneral.image = outputImage;
-        barrierToGeneral.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrierToGeneral.subresourceRange.baseMipLevel = 0;
-        barrierToGeneral.subresourceRange.levelCount = 1;
-        barrierToGeneral.subresourceRange.baseArrayLayer = 0;
-        barrierToGeneral.subresourceRange.layerCount = 1;
-        barrierToGeneral.srcAccessMask = 0;
-        barrierToGeneral.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-
-        vkCmdPipelineBarrier(
-            commandBuffer,
+        RenderUtils::transitionImageLayout(
+            commandBuffer, outputImage,
+            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+            0, VK_ACCESS_SHADER_WRITE_BIT,
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-            0,
-            0, nullptr,
-            0, nullptr,
-            1, &barrierToGeneral
+            VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR
         );
-
-
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rayTracingPipeline.getHandle());
-
         // 绑定描述符集
         uint32_t setCount = rayTracingDescriptorSetLayoutBundle.getCount();
         uint32_t offset = currentFrame * setCount;
@@ -1128,106 +1130,48 @@ void BaseRayTracingRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, 
             0,
             nullptr
         );
-
         // 推送常量（如有）
         // vkCmdPushConstants(...)
-
         // 发射光线
-        auto fpCmdTraceRaysKHR = (PFN_vkCmdTraceRaysKHR)vkGetDeviceProcAddr(device, "vkCmdTraceRaysKHR");
-        if (fpCmdTraceRaysKHR) {
-            fpCmdTraceRaysKHR(
-                commandBuffer,
-                &rayTracingPipeline.raygenRegion,
-                &rayTracingPipeline.missRegion,
-                &rayTracingPipeline.hitRegion,
-                &rayTracingPipeline.callableRegion,
-                swapChainExtent.width,
-                swapChainExtent.height,
-                1
-            );
-        }
-
-
-        // 转换 outputImage 布局为 SHADER_READ_ONLY_OPTIMAL 以供采样
-        VkImageMemoryBarrier barrierToSample = {};
-        barrierToSample.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrierToSample.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-        barrierToSample.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        barrierToSample.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrierToSample.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrierToSample.image = outputImage;
-        barrierToSample.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrierToSample.subresourceRange.baseMipLevel = 0;
-        barrierToSample.subresourceRange.levelCount = 1;
-        barrierToSample.subresourceRange.baseArrayLayer = 0;
-        barrierToSample.subresourceRange.layerCount = 1;
-        barrierToSample.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        barrierToSample.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-        vkCmdPipelineBarrier(
+        functionHandles.fpCmdTraceRaysKHR(
             commandBuffer,
-            VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0,
-            0, nullptr,
-            0, nullptr,
-            1, &barrierToSample
+            &rayTracingPipeline.raygenRegion,
+            &rayTracingPipeline.missRegion,
+            &rayTracingPipeline.hitRegion,
+            &rayTracingPipeline.callableRegion,
+            swapChainExtent.width,
+            swapChainExtent.height,
+            1
         );
-
-
+        // 转换 outputImage 布局为 SHADER_READ_ONLY_OPTIMAL 以供采样
+        RenderUtils::transitionImageLayout(
+            commandBuffer, outputImage,
+            VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+        );
         // 采样，用samplerPipeline渲染一个全屏四边形，将光线追踪结果输出到swapchain
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, samplerPipeline.getHandle());
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, samplerPipeline.getLayout(), 0, 1, &samplerDescriptorSets[currentFrame], 0, nullptr);
-            VkViewport viewport{};
-            viewport.x = 0.0f;
-            viewport.y = 0.0f;
-            viewport.width = (float) swapChainExtent.width;
-            viewport.height = (float) swapChainExtent.height;
-            viewport.minDepth = 0.0f;
-            viewport.maxDepth = 1.0f;
-            vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-            VkRect2D scissor{};
-            scissor.offset = {0,0};
-            scissor.extent = swapChainExtent;
-            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+            RenderUtils::setViewportAndScissor(commandBuffer, swapChainExtent);
             vkCmdDraw(commandBuffer, 6, 1, 0, 0); // 绘制一个全屏三角形
         vkCmdEndRenderPass(commandBuffer);
-
-
     } else {
-
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-
-
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, whiteModelPipeline.getHandle());
-
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = (float) swapChainExtent.width;
-        viewport.height = (float) swapChainExtent.height;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-        VkRect2D scissor{};
-        scissor.offset = {0,0};
-        scissor.extent = swapChainExtent;
-        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-        for(auto&meshInstance: meshInstances){
-            VkBuffer vertexBuffers[] = {meshInstance.mesh->vertexBuffer};
-            VkDeviceSize offsets[] = {0};
-            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-            vkCmdBindIndexBuffer(commandBuffer, meshInstance.mesh->indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-            glm::mat4 modelMat = meshInstance.getModelMatrix();
-            vkCmdPushConstants(commandBuffer, whiteModelPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &modelMat);
-            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, whiteModelPipeline.getLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
-            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(meshInstance.mesh->indices.size()), 1, 0, 0, 0);
-        }
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, whiteModelPipeline.getHandle());
+            RenderUtils::setViewportAndScissor(commandBuffer, swapChainExtent);
+            for(auto&meshInstance: meshInstances){
+                VkBuffer vertexBuffers[] = {meshInstance.mesh->vertexBuffer};
+                VkDeviceSize offsets[] = {0};
+                vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+                vkCmdBindIndexBuffer(commandBuffer, meshInstance.mesh->indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+                glm::mat4 modelMat = meshInstance.getModelMatrix();
+                vkCmdPushConstants(commandBuffer, whiteModelPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &modelMat);
+                vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, whiteModelPipeline.getLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+                vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(meshInstance.mesh->indices.size()), 1, 0, 0, 0);
+            }
         vkCmdEndRenderPass(commandBuffer);
     }
 
@@ -1387,7 +1331,7 @@ void BaseRayTracingRenderer::loadObjects(){
 }
 
 void BaseRayTracingRenderer::loadMaterialData(){
-#ifdef SAMPLER_TEST
+// #ifdef SAMPLER_TEST
     NeuralBinaryData materialData;
     materialData.load("../assets/test.neuralbin");
 
@@ -1491,9 +1435,7 @@ void BaseRayTracingRenderer::loadMaterialData(){
     if (vkCreateSampler(device, &sampInfo, nullptr, &neuralTextureSampler) != VK_SUCCESS)
         throw std::runtime_error("Failed to create neural texture sampler!");
     std::cout << "Neural debug: weights + textures loaded" << std::endl;
-#else
-    std::cout << "Neural debug disabled (SAMPLER_TEST not defined)" << std::endl;
-#endif
+
 }
 
 void BaseRayTracingRenderer::createUniformBuffers() {

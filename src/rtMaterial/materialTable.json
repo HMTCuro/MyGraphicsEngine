@@ -1,0 +1,15 @@
+{
+    "materials":{
+        "base": {
+            "texture": "textures/base.png",
+            "chitShader": "shader_spv/closeHit.spv"
+        }
+    },
+    "textures":[
+        {
+            "name": "brick",
+            "path": "",
+            "type": "image"
+        }
+    ]
+}

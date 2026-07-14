@@ -17,6 +17,8 @@ struct RayPayload {
     vec3 color; //HitPayload value
     float weight;
     uint depth;
+    vec3 origin;
+    vec3 direction;
 }; // HitPayload
 
 struct Vertex{

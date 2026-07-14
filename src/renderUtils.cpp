@@ -57,6 +57,59 @@ std::vector<VkDescriptorPoolSize> RenderUtils::combineDescriptorPoolSizes(const 
     return combinedSizes;
 }
 
+void RenderUtils::setViewportAndScissor(VkCommandBuffer commandBuffer, const VkExtent2D& extent) {
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float)extent.width;
+    viewport.height = (float)extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = extent;
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+}
+
+void RenderUtils::transitionImageLayout(
+    VkCommandBuffer commandBuffer,
+    VkImage image,
+    VkImageLayout oldLayout,
+    VkImageLayout newLayout,
+    VkAccessFlags srcAccessMask,
+    VkAccessFlags dstAccessMask,
+    VkPipelineStageFlags srcStage,
+    VkPipelineStageFlags dstStage)
+{
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = srcAccessMask;
+    barrier.dstAccessMask = dstAccessMask;
+
+    vkCmdPipelineBarrier(
+        commandBuffer,
+        srcStage,
+        dstStage,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+}
+
+
 // ----------------------------ImageFactory Implementation----------------------------
 void ImageFactory::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory, VkPhysicalDevice physicalDevice, VkDevice device) {
     VkImageCreateInfo imageInfo{};
@@ -115,6 +168,8 @@ VkImageView ImageFactory::createImageView(VkImage image, VkFormat format,VkImage
     return imageView;
 }
 
+// ----------------------------DescriptorWriteCollector Implementation----------------------------
+
 void DescriptorWriteCollector::addBuffer(VkDescriptorSet dstSet, uint32_t binding, VkDescriptorType type, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range, uint32_t arrayElement) {
     VkDescriptorBufferInfo info{};
     info.buffer = buffer;
@@ -129,8 +184,10 @@ void DescriptorWriteCollector::addBuffer(VkDescriptorSet dstSet, uint32_t bindin
     write.dstArrayElement = arrayElement;
     write.descriptorCount = 1;
     write.descriptorType  = type;
-    write.pBufferInfo     = &bufferInfos.back();
+    // pBufferInfo 延迟到 update() 时再设置（此时 vector 已稳定）
     writes.push_back(write);
+
+    writeFixups.push_back({InfoType::BUFFER, bufferInfos.size() - 1});
 }
 
 void DescriptorWriteCollector::addImage(VkDescriptorSet dstSet,
@@ -154,8 +211,10 @@ void DescriptorWriteCollector::addImage(VkDescriptorSet dstSet,
     write.dstArrayElement = arrayElement;
     write.descriptorCount = 1;
     write.descriptorType  = type;
-    write.pImageInfo      = &imageInfos.back();
+    // pImageInfo 延迟到 update() 时再设置
     writes.push_back(write);
+
+    writeFixups.push_back({InfoType::IMAGE, imageInfos.size() - 1});
 }
 
 void DescriptorWriteCollector::addAccelerationStructures(VkDescriptorSet dstSet,
@@ -163,23 +222,60 @@ void DescriptorWriteCollector::addAccelerationStructures(VkDescriptorSet dstSet,
                                    const std::vector<VkAccelerationStructureKHR>& handles,
                                    uint32_t arrayElement)
 {
-    // 保存 handles 的副本，并记录此次写入的偏移
+    // 保存 handles 的副本
     size_t offset = asHandles.size();
     asHandles.insert(asHandles.end(), handles.begin(), handles.end());
 
     VkWriteDescriptorSetAccelerationStructureKHR asExt{};
     asExt.sType                      = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
     asExt.accelerationStructureCount = static_cast<uint32_t>(handles.size());
-    asExt.pAccelerationStructures    = &asHandles[offset];   // 指向稳定存储
+    // pAccelerationStructures 延迟到 update() 时再设置
     asExtensions.push_back(asExt);
 
     VkWriteDescriptorSet write{};
     write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.pNext           = &asExtensions.back();
     write.dstSet          = dstSet;
     write.dstBinding      = binding;
     write.dstArrayElement = arrayElement;
     write.descriptorCount = 1;
     write.descriptorType  = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+    // pNext 延迟到 update() 时再设置
     writes.push_back(write);
+
+    writeFixups.push_back({InfoType::AS_EXT, asExtensions.size() - 1, offset});
+}
+
+void DescriptorWriteCollector::update(VkDevice device) {
+    // 此时所有 info 向量已稳定，修复各 write 的指针
+    for (size_t i = 0; i < writes.size(); i++) {
+        switch (writeFixups[i].type) {
+            case InfoType::BUFFER:
+                writes[i].pBufferInfo = &bufferInfos[writeFixups[i].index];
+                break;
+            case InfoType::IMAGE:
+                writes[i].pImageInfo = &imageInfos[writeFixups[i].index];
+                break;
+            case InfoType::AS_EXT: {
+                size_t extIdx = writeFixups[i].index;
+                asExtensions[extIdx].pAccelerationStructures = &asHandles[writeFixups[i].asHandlesOffset];
+                writes[i].pNext = &asExtensions[extIdx];
+                break;
+            }
+            default:
+                break;
+        }
+    }
+    vkUpdateDescriptorSets(device,
+                           static_cast<uint32_t>(writes.size()),
+                           writes.data(),
+                           0, nullptr);
+}
+
+void DescriptorWriteCollector::reset() {
+    writes.clear();
+    bufferInfos.clear();
+    imageInfos.clear();
+    asExtensions.clear();
+    asHandles.clear();
+    writeFixups.clear();
 }

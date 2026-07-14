@@ -26,3 +26,37 @@ VkShaderModule ShaderFactory::CreateShaderModuleFromFile(VkDevice device, const 
     auto code = ReadSpvFile(filename);
     return CreateShaderModule(device, code);
 }
+
+VkPipelineShaderStageCreateInfo ShaderFactory::CreateShaderStageInfo(
+    VkShaderStageFlagBits stage,
+    VkShaderModule shaderModule,
+    const char* entryPoint,
+    const VkSpecializationInfo* specializationInfo)
+{
+    VkPipelineShaderStageCreateInfo shaderStageInfo{};
+    shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStageInfo.stage = stage;
+    shaderStageInfo.module = shaderModule;
+    shaderStageInfo.pName = entryPoint;
+    shaderStageInfo.pSpecializationInfo = specializationInfo;
+    return shaderStageInfo;
+}
+
+VkRayTracingShaderGroupCreateInfoKHR ShaderFactory::CreateRTShaderGroup(
+    VkRayTracingShaderGroupTypeKHR type,
+    uint32_t generalShader,
+    uint32_t closestHitShader,
+    uint32_t anyHitShader,
+    uint32_t intersectionShader
+) {
+    VkRayTracingShaderGroupCreateInfoKHR group{};
+    group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+    group.type = type;
+    group.generalShader = generalShader;
+    group.closestHitShader = closestHitShader;
+    group.anyHitShader = anyHitShader;
+    group.intersectionShader = intersectionShader;
+    return group;
+}
+
+
